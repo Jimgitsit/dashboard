@@ -1,0 +1,291 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1080" width="960" height="1080" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#8892a4"/>
+    </marker>
+    <marker id="arrow-accent" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7c6dfa"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4ade80"/>
+    </marker>
+    <marker id="arrow-yellow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="1080" fill="#0f1117"/>
+
+  <!-- Title -->
+  <text x="480" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#7c6dfa">Upsonic Agent Workflow</text>
+
+  <!-- ── SWIMLANE HEADERS ── -->
+  <!-- Lane: You -->
+  <rect x="20" y="60" width="140" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="90" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">You</text>
+
+  <!-- Lane: Project Manager -->
+  <rect x="170" y="60" width="160" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="250" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">Project Manager</text>
+
+  <!-- Lane: Trello -->
+  <rect x="340" y="60" width="160" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">Trello</text>
+  <text x="420" y="100" text-anchor="middle" font-size="10" fill="#8892a4">(shared channel)</text>
+
+  <!-- Lane: Specialist Agents -->
+  <rect x="510" y="60" width="430" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="725" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">Specialist Agents</text>
+
+  <!-- GitHub badge in agents lane -->
+  <rect x="760" y="62" width="80" height="22" rx="4" fill="#22263a"/>
+  <text x="800" y="77" text-anchor="middle" font-size="10" fill="#8892a4">+ GitHub</text>
+
+  <!-- ══════════════════════════════════════════════
+       PHASE 1: PROJECT KICKOFF
+  ══════════════════════════════════════════════ -->
+
+  <!-- Phase label -->
+  <rect x="30" y="115" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="131" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 1 — PROJECT KICKOFF</text>
+
+  <!-- Step 1: You submits design doc -->
+  <rect x="30" y="152" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="90" y="171" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Submit</text>
+  <text x="90" y="186" text-anchor="middle" font-size="11" fill="#8892a4">design doc</text>
+
+  <!-- Arrow: You → PM -->
+  <line x1="150" y1="174" x2="178" y2="174" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="164" y="168" text-anchor="middle" font-size="9" fill="#8892a4">task</text>
+
+  <!-- Step 2: PM creates board + card -->
+  <rect x="180" y="152" width="140" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="250" y="171" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Create board</text>
+  <text x="250" y="186" text-anchor="middle" font-size="11" fill="#8892a4">+ design card</text>
+
+  <!-- Arrow: PM → Trello (create) -->
+  <line x1="320" y1="174" x2="348" y2="174" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="334" y="168" text-anchor="middle" font-size="9" fill="#8892a4">write</text>
+
+  <!-- Trello: Design Doc Card -->
+  <rect x="350" y="152" width="140" height="44" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="169" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Design Doc Card</text>
+  <text x="420" y="184" text-anchor="middle" font-size="10" fill="#8892a4">board created</text>
+
+  <!-- Step 3: PM spawns Architect + DevOps in parallel -->
+  <!-- Arrow: PM → Architect -->
+  <line x1="250" y1="196" x2="250" y2="215" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="250" y1="215" x2="580" y2="215" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="580" y1="215" x2="580" y2="234" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Arrow: PM → DevOps -->
+  <line x1="250" y1="215" x2="720" y2="215" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="720" y1="215" x2="720" y2="234" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <text x="490" y="210" text-anchor="middle" font-size="9" fill="#fbbf24">spawn (parallel)</text>
+
+  <!-- Architect node -->
+  <rect x="520" y="234" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="253" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Architect</text>
+  <text x="580" y="268" text-anchor="middle" font-size="10" fill="#8892a4">reviews design</text>
+
+  <!-- DevOps node -->
+  <rect x="660" y="234" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="720" y="253" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">DevOps</text>
+  <text x="720" y="268" text-anchor="middle" font-size="10" fill="#8892a4">creates repo + CI</text>
+
+  <!-- Arrow: Architect → Trello (comment) -->
+  <line x1="520" y1="256" x2="492" y2="256" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="506" y="250" text-anchor="middle" font-size="9" fill="#8892a4">comment</text>
+
+  <!-- Arrow: DevOps → Trello (repo URL) -->
+  <line x1="660" y1="270" x2="492" y2="290" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="590" y="272" text-anchor="middle" font-size="9" fill="#8892a4">repo URL</text>
+
+  <!-- Trello: Arch + DevOps comments -->
+  <rect x="350" y="234" width="140" height="44" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="251" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Comments posted</text>
+  <text x="420" y="266" text-anchor="middle" font-size="10" fill="#8892a4">arch analysis + repo</text>
+
+  <!-- Step 4: You green-lights -->
+  <!-- Arrow: Trello → You (you read it) -->
+  <line x1="350" y1="295" x2="152" y2="295" stroke="#8892a4" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="250" y="289" text-anchor="middle" font-size="9" fill="#8892a4">you review</text>
+
+  <rect x="30" y="308" width="120" height="44" rx="8" fill="#22263a" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="90" y="327" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">Green-light</text>
+  <text x="90" y="342" text-anchor="middle" font-size="11" fill="#8892a4">in comments</text>
+
+  <!-- Arrow: You → Trello (green-light comment) -->
+  <line x1="150" y1="330" x2="348" y2="330" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="249" y="324" text-anchor="middle" font-size="9" fill="#4ade80">comment</text>
+
+  <!-- Trello: green-light received -->
+  <rect x="350" y="308" width="140" height="44" rx="8" fill="#22263a" stroke="#4ade80" stroke-width="1"/>
+  <text x="420" y="325" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">Green-light</text>
+  <text x="420" y="340" text-anchor="middle" font-size="10" fill="#8892a4">detected on next poll</text>
+
+  <!-- ══════════════════════════════════════════════
+       PHASE 2: PLANNING
+  ══════════════════════════════════════════════ -->
+
+  <rect x="30" y="370" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="386" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 2 — PLANNING (PM POLL CYCLE)</text>
+
+  <!-- PM reads Trello -->
+  <line x1="420" y1="352" x2="420" y2="365" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="420" y1="365" x2="250" y2="365" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="250" y1="365" x2="250" y2="392" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+  <rect x="180" y="405" width="140" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="250" y="424" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">PM reads all</text>
+  <text x="250" y="439" text-anchor="middle" font-size="10" fill="#8892a4">doc + arch notes</text>
+  <text x="250" y="452" text-anchor="middle" font-size="10" fill="#8892a4">+ comments</text>
+
+  <!-- PM → Trello (create task cards) -->
+  <line x1="320" y1="431" x2="348" y2="431" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="350" y="405" width="140" height="52" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="424" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Task Cards</text>
+  <text x="420" y="439" text-anchor="middle" font-size="10" fill="#8892a4">created in Backlog</text>
+  <text x="420" y="452" text-anchor="middle" font-size="10" fill="#8892a4">with accept. criteria</text>
+
+  <!-- ══════════════════════════════════════════════
+       PHASE 3: DEVELOPMENT LOOP
+  ══════════════════════════════════════════════ -->
+
+  <rect x="30" y="475" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="491" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 3 — DEVELOPMENT LOOP (REPEATS PER TASK CARD)</text>
+
+  <!-- PM spawns Developer -->
+  <line x1="250" y1="457" x2="250" y2="510" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="250" y1="510" x2="568" y2="510" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="390" y="504" text-anchor="middle" font-size="9" fill="#fbbf24">spawn</text>
+
+  <!-- Developer node -->
+  <rect x="520" y="510" width="120" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="530" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Developer</text>
+  <text x="580" y="545" text-anchor="middle" font-size="10" fill="#8892a4">implements task</text>
+  <text x="580" y="558" text-anchor="middle" font-size="10" fill="#8892a4">opens PR on GitHub</text>
+
+  <!-- Developer → Trello (move to In Review + PR link) -->
+  <line x1="520" y1="548" x2="492" y2="548" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="506" y="542" text-anchor="middle" font-size="9" fill="#8892a4">PR link</text>
+
+  <!-- Trello: In Review -->
+  <rect x="350" y="510" width="140" height="52" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="530" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Card → In Review</text>
+  <text x="420" y="545" text-anchor="middle" font-size="10" fill="#8892a4">PR link attached</text>
+  <text x="420" y="558" text-anchor="middle" font-size="10" fill="#fbbf24">PM poll detects</text>
+
+  <!-- PM spawns Code Reviewer -->
+  <line x1="420" y1="562" x2="420" y2="590" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="420" y1="590" x2="250" y2="590" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="590" x2="250" y2="608" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="608" x2="248" y2="620" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="620" x2="658" y2="620" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="440" y="616" text-anchor="middle" font-size="9" fill="#fbbf24">spawn</text>
+
+  <!-- Code Reviewer node -->
+  <rect x="520" y="630" width="120" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="650" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Code Reviewer</text>
+  <text x="580" y="665" text-anchor="middle" font-size="10" fill="#8892a4">reviews PR on GitHub</text>
+  <text x="580" y="678" text-anchor="middle" font-size="10" fill="#8892a4">approves or requests Δ</text>
+
+  <!-- Code Reviewer → Trello -->
+  <line x1="520" y1="660" x2="492" y2="660" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="506" y="654" text-anchor="middle" font-size="9" fill="#8892a4">outcome</text>
+
+  <!-- Trello: Approved -->
+  <rect x="350" y="630" width="140" height="52" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="650" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Review outcome</text>
+  <text x="420" y="665" text-anchor="middle" font-size="10" fill="#8892a4">approved comment</text>
+  <text x="420" y="678" text-anchor="middle" font-size="10" fill="#fbbf24">PM poll detects</text>
+
+  <!-- Changes requested path -->
+  <line x1="640" y1="682" x2="660" y2="682" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="660" y1="682" x2="660" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="660" y1="536" x2="642" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="680" y="614" font-size="9" fill="#f87171">changes</text>
+  <text x="680" y="626" font-size="9" fill="#f87171">requested</text>
+
+  <!-- PM spawns Tester -->
+  <line x1="420" y1="682" x2="420" y2="710" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="420" y1="710" x2="250" y2="710" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="710" x2="250" y2="740" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="740" x2="658" y2="740" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="440" y="736" text-anchor="middle" font-size="9" fill="#fbbf24">spawn</text>
+
+  <!-- Tester node -->
+  <rect x="520" y="750" width="120" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="770" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Tester</text>
+  <text x="580" y="785" text-anchor="middle" font-size="10" fill="#8892a4">validates, merges PR</text>
+  <text x="580" y="798" text-anchor="middle" font-size="10" fill="#8892a4">closes card</text>
+
+  <!-- Tester → Trello -->
+  <line x1="520" y1="776" x2="492" y2="776" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+  <!-- Trello: Done -->
+  <rect x="350" y="750" width="140" height="52" rx="8" fill="#22263a" stroke="#4ade80" stroke-width="1"/>
+  <text x="420" y="770" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">Card → Done</text>
+  <text x="420" y="785" text-anchor="middle" font-size="10" fill="#8892a4">PR merged to develop</text>
+  <text x="420" y="798" text-anchor="middle" font-size="10" fill="#8892a4">task complete</text>
+
+  <!-- Fail path from Tester back -->
+  <line x1="640" y1="802" x2="670" y2="802" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="670" y1="802" x2="670" y2="750" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="670" y1="750" x2="670" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="670" y1="536" x2="642" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="690" y="680" font-size="9" fill="#f87171">tests</text>
+  <text x="690" y="692" font-size="9" fill="#f87171">failed</text>
+
+  <!-- ══════════════════════════════════════════════
+       PHASE 4: DEPLOYMENT
+  ══════════════════════════════════════════════ -->
+
+  <rect x="30" y="820" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="836" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 4 — DEPLOYMENT</text>
+
+  <!-- PM requests deploy -->
+  <line x1="250" y1="802" x2="250" y2="858" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="180" y="858" width="140" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="250" y="877" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">PM requests</text>
+  <text x="250" y="892" text-anchor="middle" font-size="11" fill="#8892a4">staging / prod deploy</text>
+
+  <!-- PM → DevOps (spawn) -->
+  <line x1="320" y1="880" x2="658" y2="880" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="480" y="874" text-anchor="middle" font-size="9" fill="#fbbf24">spawn DevOps</text>
+
+  <!-- DevOps deploy node -->
+  <rect x="660" y="858" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="720" y="877" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">DevOps</text>
+  <text x="720" y="892" text-anchor="middle" font-size="11" fill="#8892a4">deploys, posts URL</text>
+
+  <!-- DevOps → Trello -->
+  <line x1="660" y1="880" x2="492" y2="880" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="350" y="858" width="140" height="44" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="877" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Deploy URL</text>
+  <text x="420" y="892" text-anchor="middle" font-size="10" fill="#8892a4">posted on card</text>
+
+  <!-- You reviews deploy (optional prod sign-off) -->
+  <line x1="350" y1="900" x2="152" y2="940" stroke="#8892a4" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+  <rect x="30" y="940" width="120" height="44" rx="8" fill="#22263a" stroke="#fbbf24" stroke-width="1"/>
+  <text x="90" y="959" text-anchor="middle" font-size="11" font-weight="600" fill="#fbbf24">Prod sign-off</text>
+  <text x="90" y="974" text-anchor="middle" font-size="10" fill="#8892a4">(optional)</text>
+
+  <!-- LEGEND -->
+  <rect x="520" y="870" width="390" height="90" rx="6" fill="#22263a" stroke="#2d3250"/>
+  <text x="540" y="890" font-size="10" font-weight="600" fill="#8892a4">LEGEND</text>
+  <line x1="540" y1="902" x2="570" y2="902" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="578" y="906" font-size="10" fill="#8892a4">agent action / data flow</text>
+  <line x1="540" y1="918" x2="570" y2="918" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-yellow)"/>
+  <text x="578" y="922" font-size="10" fill="#8892a4">PM spawns agent</text>
+  <line x1="540" y1="934" x2="570" y2="934" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="578" y="938" font-size="10" fill="#8892a4">human green-light / success</text>
+  <line x1="540" y1="950" x2="570" y2="950" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="578" y="954" font-size="10" fill="#8892a4">failure / rework loop</text>
+</svg>

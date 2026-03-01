@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upsonic Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%237c6dfa'/><polygon points='19,3 10,18 16,18 13,29 22,14 16,14' fill='white'/></svg>">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2d3250;
+    --accent: #7c6dfa;
+    --accent2: #4ade80;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --danger: #f87171;
+    --warning: #fbbf24;
+    --success: #4ade80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+
+  /* Layout */
+  .header { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .header h1 { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .header .subtitle { color: var(--muted); font-size: 12px; }
+  .tabs { display: flex; gap: 2px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .tab-btn { padding: 12px 20px; cursor: pointer; background: none; border: none; color: var(--muted); font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-pane { display: none; padding: 24px; }
+  .tab-pane.active { display: block; }
+
+  /* Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .kpi-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .kpi-value { font-size: 26px; font-weight: 700; color: var(--text); }
+  .kpi-value.accent { color: var(--accent); }
+  .kpi-value.success { color: var(--success); }
+
+  /* Charts */
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .chart-card h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .chart-container { position: relative; height: 220px; }
+
+  /* Table */
+  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: 600; color: var(--muted); padding: 14px 16px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.05em; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-success { background: rgba(74,222,128,0.15); color: var(--success); }
+  .badge-error { background: rgba(248,113,113,0.15); color: var(--danger); }
+  .badge-unknown { background: rgba(136,146,164,0.15); color: var(--muted); }
+  .badge-running { background: rgba(251,191,36,0.15); color: var(--warning); }
+  .badge-cancelled { background: rgba(251,191,36,0.15); color: #f59e0b; }
+  .badge-autonomous { background: rgba(251,191,36,0.12); color: var(--warning); }
+  .badge-deep { background: rgba(124,109,250,0.15); color: var(--accent); }
+  .mono { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+
+  /* Agents tab */
+  .agents-layout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  .agent-list { display: flex; flex-direction: column; gap: 10px; }
+  .agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: border-color 0.15s; }
+  .agent-card:hover { border-color: var(--accent); }
+  .agent-card.selected { border-color: var(--accent); background: var(--surface2); }
+  .agent-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .agent-name { font-weight: 600; font-size: 14px; }
+  .agent-model { color: var(--muted); font-size: 12px; font-family: monospace; }
+  .agent-meta { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+  .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--border); border-radius: 20px; cursor: pointer; transition: 0.2s; }
+  .slider:before { position: absolute; content: ""; width: 14px; height: 14px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(16px); }
+
+  /* Detail panel */
+  .detail-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .detail-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .detail-body { padding: 20px; }
+  .section-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; margin-top: 20px; }
+  .section-title:first-child { margin-top: 0; }
+
+  /* Forms */
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], textarea, select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); padding: 8px 10px; font-size: 13px;
+    font-family: inherit; outline: none; transition: border-color 0.15s;
+  }
+  input[type=text]:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-danger { background: rgba(248,113,113,0.15); color: var(--danger); border: 1px solid rgba(248,113,113,0.3); }
+  .btn-danger:hover { background: rgba(248,113,113,0.25); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+  /* Run output */
+  .run-output { background: #0a0c14; border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; font-size: 13px; line-height: 1.7; word-break: break-word; max-height: 480px; overflow-y: auto; color: #c8d3e6; margin-top: 12px; }
+  .run-output p { margin: 0 0 10px; }
+  .run-output p:last-child { margin-bottom: 0; }
+  .run-output h1,.run-output h2,.run-output h3,.run-output h4 { color: var(--text); margin: 16px 0 8px; font-weight: 600; }
+  .run-output h1 { font-size: 18px; } .run-output h2 { font-size: 16px; } .run-output h3 { font-size: 14px; }
+  .run-output ul,.run-output ol { padding-left: 20px; margin: 0 0 10px; }
+  .run-output li { margin-bottom: 4px; }
+  .run-output code { background: rgba(124,109,250,0.15); color: #a78bfa; padding: 1px 5px; border-radius: 3px; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  .run-output pre { background: #0d0f1a; border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; margin: 0 0 10px; }
+  .run-output pre code { background: none; padding: 0; color: #c8d3e6; }
+  .run-output blockquote { border-left: 3px solid var(--accent); margin: 0 0 10px; padding: 4px 12px; color: var(--muted); }
+  .run-output table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+  .run-output th,.run-output td { border: 1px solid var(--border); padding: 6px 10px; font-size: 12px; }
+  .run-output th { background: var(--surface2); }
+  .run-output a { color: var(--accent); }
+  .run-output hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .run-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 10px; }
+  .run-metric { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
+  .run-metric .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .run-metric .value { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 2px; }
+
+  /* New agent form card */
+  .new-agent-card { background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 16px; }
+  .new-agent-card h3 { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; margin: 0; }
+  .new-agent-card h3 .chevron { transition: transform 0.2s; color: var(--muted); font-style: normal; }
+  .new-agent-card h3 .chevron.open { transform: rotate(180deg); }
+  .new-agent-body { margin-top: 14px; }
+
+  /* Stats mini grid */
+  .stats-mini { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  .stats-mini .stat { background: var(--surface2); border-radius: 6px; padding: 10px; }
+  .stats-mini .stat .label { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  .stats-mini .stat .value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+
+  /* Misc */
+  .empty { text-align: center; color: var(--muted); padding: 40px; }
+  .refresh-note { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .truncate { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .error-msg { color: var(--danger); font-size: 12px; margin-top: 6px; }
+  .success-msg { color: var(--success); font-size: 12px; margin-top: 6px; }
+  @media (max-width: 900px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .agents-layout { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Upsonic Dashboard</h1>
+    <div class="subtitle">Metrics &amp; Agent Manager</div>
+  </div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+    <span id="last-refresh" class="refresh-note">–</span>
+    <button class="btn btn-ghost btn-sm" onclick="refreshMetrics()">↻ Refresh</button>
+    <button class="btn btn-ghost btn-sm" onclick="showSettingsTab(this)" title="Settings">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('metrics', this)">Metrics</button>
+  <button class="tab-btn" onclick="showTab('agents', this)">Agents</button>
+  <button class="tab-btn" onclick="showTab('newproject', this)">New Project</button>
+  <button class="tab-btn" onclick="showTab('workflow', this)">Workflow</button>
+</div>
+
+<!-- ===== METRICS TAB ===== -->
+<div id="tab-metrics" class="tab-pane active">
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Total Runs</div><div class="kpi-value accent" id="kpi-runs">–</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Tokens</div><div class="kpi-value" id="kpi-tokens">–</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Cost</div><div class="kpi-value" id="kpi-cost">–</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Duration</div><div class="kpi-value" id="kpi-duration">–</div></div>
+    <div class="kpi-card"><div class="kpi-label">Success Rate</div><div class="kpi-value success" id="kpi-success">–</div></div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>Daily Tokens &amp; Cost (30d)</h3>
+      <div class="chart-container"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Agent Performance</h3>
+      <div class="chart-container"><canvas id="agentChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <h3>Task History</h3>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th><th>Agent</th><th>Model</th><th>Task</th>
+            <th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th>
+          </tr>
+        </thead>
+        <tbody id="runs-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== AGENTS TAB ===== -->
+<div id="tab-agents" class="tab-pane">
+  <div class="agents-layout">
+    <!-- Left column: list + new form -->
+    <div>
+      <div class="new-agent-card" style="margin-bottom:16px;">
+        <h3 onclick="toggleNewAgent()">
+          <span>+ New Agent</span>
+          <i class="chevron" id="new-agent-chevron">▾</i>
+        </h3>
+        <div class="new-agent-body" id="new-agent-body" style="display:none;">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="new-agent-name" placeholder="My Agent">
+          </div>
+          <div class="form-group">
+            <label>Model</label>
+            <select id="new-agent-model">
+              <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+              <option value="claude-opus-4-6">claude-opus-4-6</option>
+              <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Agent Type</label>
+            <select id="new-agent-type" onchange="updateNewAgentWorkspaceVisibility()">
+              <option value="standard">Standard</option>
+              <option value="autonomous">Autonomous (filesystem + shell)</option>
+              <option value="deep">Deep (multi-step planning)</option>
+            </select>
+          </div>
+          <div class="form-group" id="new-agent-workspace-group" style="display:none;">
+            <label>Workspace Directory</label>
+            <input type="text" id="new-agent-workspace" placeholder="/path/to/project">
+          </div>
+          <div class="form-group">
+            <label>System Prompt (optional)</label>
+            <textarea id="new-agent-prompt" placeholder="You are a helpful assistant…" style="min-height:60px;"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Tools</label>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" value="WebSearchTool" class="new-tool-cb"> WebSearchTool
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" value="CodeExecutionTool" class="new-tool-cb"> CodeExecutionTool
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" value="GitHub" class="new-tool-cb"> GitHub (MCP)
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" value="Jira" class="new-tool-cb"> Jira (MCP)
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" value="Trello" class="new-tool-cb"> Trello (MCP)
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" value="SpawnAgents" class="new-tool-cb"> Spawn Agents
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Max Instances <span style="color:var(--muted);font-weight:normal;">(optional — limits how many times the PM can spawn this agent per task)</span></label>
+            <input type="number" id="new-agent-max-instances" min="1" value="1" placeholder="Unlimited">
+          </div>
+          <div id="new-agent-error" class="error-msg" style="display:none;"></div>
+          <button class="btn btn-primary" onclick="createAgent()">Create Agent</button>
+        </div>
+      </div>
+
+      <div id="agent-list" class="agent-list">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Right column: detail panel -->
+    <div id="agent-detail">
+      <div class="detail-panel">
+        <div class="detail-header">
+          <span style="color:var(--muted);font-size:13px;">Select an agent to view details</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== NEW PROJECT TAB ===== -->
+<div id="tab-newproject" class="tab-pane">
+  <div style="max-width:860px;">
+    <div style="margin-bottom:24px;">
+      <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">New Project</div>
+      <div style="font-size:13px;color:var(--muted);">Upload a markdown design document. The Project Manager will create a Trello board, spawn the Architect and DevOps agents, and coordinate the workflow from here.</div>
+    </div>
+
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:16px;text-transform:uppercase;letter-spacing:0.05em;">Design Document</h3>
+
+      <div class="form-group">
+        <label>Markdown File</label>
+        <div id="upload-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;cursor:pointer;transition:border-color 0.15s;"
+             onclick="document.getElementById('design-doc-file').click()"
+             ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+             ondragleave="this.style.borderColor='var(--border)'"
+             ondrop="handleDocDrop(event)">
+          <div style="font-size:28px;margin-bottom:8px;">📄</div>
+          <div style="color:var(--muted);font-size:13px;">Drop a <code>.md</code> file here or <span style="color:var(--accent);text-decoration:underline;">click to browse</span></div>
+          <input type="file" id="design-doc-file" accept=".md,.markdown" style="display:none" onchange="loadDesignDoc(this.files[0])">
+        </div>
+      </div>
+
+      <div id="design-doc-meta" style="display:none;margin-top:12px;padding:10px 14px;background:var(--surface2);border-radius:6px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <span id="design-doc-filename" style="font-weight:600;color:var(--text);"></span>
+          <span id="design-doc-size" style="color:var(--muted);font-size:12px;margin-left:10px;"></span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="clearDesignDoc()">✕ Clear</button>
+      </div>
+    </div>
+
+    <div id="design-doc-preview-card" class="table-card" style="padding:20px;margin-bottom:16px;display:none;">
+      <h3 style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:16px;text-transform:uppercase;letter-spacing:0.05em;">Preview</h3>
+      <div id="design-doc-preview" style="font-size:13px;line-height:1.7;color:var(--text);max-height:400px;overflow-y:auto;"></div>
+    </div>
+
+    <div class="btn-row" style="margin-bottom:16px;">
+      <button class="btn btn-primary" id="submit-doc-btn" onclick="submitDesignDoc()" disabled>Send to Project Manager</button>
+    </div>
+
+    <div id="submit-doc-result" style="display:none;">
+      <div class="table-card" style="padding:20px;">
+        <h3 style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.05em;">Project Manager Output</h3>
+        <div id="submit-doc-output" class="run-output" style="min-height:60px;"></div>
+        <div id="submit-doc-metrics"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== WORKFLOW TAB ===== -->
+<div id="tab-workflow" class="tab-pane">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1080" width="100%" style="max-width:960px;display:block;" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#8892a4"/>
+    </marker>
+    <marker id="arrow-accent" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#7c6dfa"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4ade80"/>
+    </marker>
+    <marker id="arrow-yellow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+    </marker>
+  </defs>
+  <rect width="960" height="1080" fill="#0f1117"/>
+  <text x="480" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#7c6dfa">Upsonic Agent Workflow</text>
+  <rect x="20" y="60" width="140" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="90" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">You</text>
+  <rect x="170" y="60" width="160" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="250" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">Project Manager</text>
+  <rect x="340" y="60" width="160" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">Trello</text>
+  <text x="420" y="100" text-anchor="middle" font-size="10" fill="#8892a4">(shared channel)</text>
+  <rect x="510" y="60" width="430" height="990" rx="8" fill="#1a1d27" stroke="#2d3250" stroke-width="1"/>
+  <text x="725" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#e2e8f0">Specialist Agents</text>
+  <rect x="760" y="62" width="80" height="22" rx="4" fill="#22263a"/>
+  <text x="800" y="77" text-anchor="middle" font-size="10" fill="#8892a4">+ GitHub</text>
+  <rect x="30" y="115" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="131" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 1 — PROJECT KICKOFF</text>
+  <rect x="30" y="152" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="90" y="171" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Submit</text>
+  <text x="90" y="186" text-anchor="middle" font-size="11" fill="#8892a4">design doc</text>
+  <line x1="150" y1="174" x2="178" y2="174" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="164" y="168" text-anchor="middle" font-size="9" fill="#8892a4">task</text>
+  <rect x="180" y="152" width="140" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="250" y="171" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Create board</text>
+  <text x="250" y="186" text-anchor="middle" font-size="11" fill="#8892a4">+ design card</text>
+  <line x1="320" y1="174" x2="348" y2="174" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="334" y="168" text-anchor="middle" font-size="9" fill="#8892a4">write</text>
+  <rect x="350" y="152" width="140" height="44" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="169" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Design Doc Card</text>
+  <text x="420" y="184" text-anchor="middle" font-size="10" fill="#8892a4">board created</text>
+  <line x1="250" y1="196" x2="250" y2="215" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="250" y1="215" x2="580" y2="215" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="580" y1="215" x2="580" y2="234" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="250" y1="215" x2="720" y2="215" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="720" y1="215" x2="720" y2="234" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="490" y="210" text-anchor="middle" font-size="9" fill="#fbbf24">spawn (parallel)</text>
+  <rect x="520" y="234" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="253" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Architect</text>
+  <text x="580" y="268" text-anchor="middle" font-size="10" fill="#8892a4">reviews design</text>
+  <rect x="660" y="234" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="720" y="253" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">DevOps</text>
+  <text x="720" y="268" text-anchor="middle" font-size="10" fill="#8892a4">creates repo + CI</text>
+  <line x1="520" y1="256" x2="492" y2="256" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="506" y="250" text-anchor="middle" font-size="9" fill="#8892a4">comment</text>
+  <line x1="660" y1="270" x2="492" y2="290" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="590" y="272" text-anchor="middle" font-size="9" fill="#8892a4">repo URL</text>
+  <rect x="350" y="234" width="140" height="44" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="251" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Comments posted</text>
+  <text x="420" y="266" text-anchor="middle" font-size="10" fill="#8892a4">arch analysis + repo</text>
+  <line x1="350" y1="295" x2="152" y2="295" stroke="#8892a4" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="250" y="289" text-anchor="middle" font-size="9" fill="#8892a4">you review</text>
+  <rect x="30" y="308" width="120" height="44" rx="8" fill="#22263a" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="90" y="327" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">Green-light</text>
+  <text x="90" y="342" text-anchor="middle" font-size="11" fill="#8892a4">in comments</text>
+  <line x1="150" y1="330" x2="348" y2="330" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="249" y="324" text-anchor="middle" font-size="9" fill="#4ade80">comment</text>
+  <rect x="350" y="308" width="140" height="44" rx="8" fill="#22263a" stroke="#4ade80" stroke-width="1"/>
+  <text x="420" y="325" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">Green-light</text>
+  <text x="420" y="340" text-anchor="middle" font-size="10" fill="#8892a4">detected on next poll</text>
+  <rect x="30" y="370" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="386" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 2 — PLANNING (PM POLL CYCLE)</text>
+  <line x1="420" y1="352" x2="420" y2="365" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="420" y1="365" x2="250" y2="365" stroke="#4ade80" stroke-width="1.5"/>
+  <line x1="250" y1="365" x2="250" y2="392" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <rect x="180" y="405" width="140" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="250" y="424" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">PM reads all</text>
+  <text x="250" y="439" text-anchor="middle" font-size="10" fill="#8892a4">doc + arch notes</text>
+  <text x="250" y="452" text-anchor="middle" font-size="10" fill="#8892a4">+ comments</text>
+  <line x1="320" y1="431" x2="348" y2="431" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="350" y="405" width="140" height="52" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="424" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Task Cards</text>
+  <text x="420" y="439" text-anchor="middle" font-size="10" fill="#8892a4">created in Backlog</text>
+  <text x="420" y="452" text-anchor="middle" font-size="10" fill="#8892a4">with accept. criteria</text>
+  <rect x="30" y="475" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="491" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 3 — DEVELOPMENT LOOP (REPEATS PER TASK CARD)</text>
+  <line x1="250" y1="457" x2="250" y2="510" stroke="#8892a4" stroke-width="1.5"/>
+  <line x1="250" y1="510" x2="568" y2="510" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="390" y="504" text-anchor="middle" font-size="9" fill="#fbbf24">spawn</text>
+  <rect x="520" y="510" width="120" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="530" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Developer</text>
+  <text x="580" y="545" text-anchor="middle" font-size="10" fill="#8892a4">implements task</text>
+  <text x="580" y="558" text-anchor="middle" font-size="10" fill="#8892a4">opens PR on GitHub</text>
+  <line x1="520" y1="548" x2="492" y2="548" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="506" y="542" text-anchor="middle" font-size="9" fill="#8892a4">PR link</text>
+  <rect x="350" y="510" width="140" height="52" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="530" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Card → In Review</text>
+  <text x="420" y="545" text-anchor="middle" font-size="10" fill="#8892a4">PR link attached</text>
+  <text x="420" y="558" text-anchor="middle" font-size="10" fill="#fbbf24">PM poll detects</text>
+  <line x1="420" y1="562" x2="420" y2="590" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="420" y1="590" x2="250" y2="590" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="590" x2="250" y2="620" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="620" x2="658" y2="620" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="440" y="616" text-anchor="middle" font-size="9" fill="#fbbf24">spawn</text>
+  <rect x="520" y="630" width="120" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="650" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Code Reviewer</text>
+  <text x="580" y="665" text-anchor="middle" font-size="10" fill="#8892a4">reviews PR on GitHub</text>
+  <text x="580" y="678" text-anchor="middle" font-size="10" fill="#8892a4">approves or requests Δ</text>
+  <line x1="520" y1="660" x2="492" y2="660" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="506" y="654" text-anchor="middle" font-size="9" fill="#8892a4">outcome</text>
+  <rect x="350" y="630" width="140" height="52" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="650" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Review outcome</text>
+  <text x="420" y="665" text-anchor="middle" font-size="10" fill="#8892a4">approved comment</text>
+  <text x="420" y="678" text-anchor="middle" font-size="10" fill="#fbbf24">PM poll detects</text>
+  <line x1="640" y1="682" x2="660" y2="682" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="660" y1="682" x2="660" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="660" y1="536" x2="642" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="680" y="614" font-size="9" fill="#f87171">changes</text>
+  <text x="680" y="626" font-size="9" fill="#f87171">requested</text>
+  <line x1="420" y1="682" x2="420" y2="710" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="420" y1="710" x2="250" y2="710" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="710" x2="250" y2="740" stroke="#fbbf24" stroke-width="1.5"/>
+  <line x1="250" y1="740" x2="658" y2="740" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="440" y="736" text-anchor="middle" font-size="9" fill="#fbbf24">spawn</text>
+  <rect x="520" y="750" width="120" height="52" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="580" y="770" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Tester</text>
+  <text x="580" y="785" text-anchor="middle" font-size="10" fill="#8892a4">validates, merges PR</text>
+  <text x="580" y="798" text-anchor="middle" font-size="10" fill="#8892a4">closes card</text>
+  <line x1="520" y1="776" x2="492" y2="776" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <rect x="350" y="750" width="140" height="52" rx="8" fill="#22263a" stroke="#4ade80" stroke-width="1"/>
+  <text x="420" y="770" text-anchor="middle" font-size="11" font-weight="600" fill="#4ade80">Card → Done</text>
+  <text x="420" y="785" text-anchor="middle" font-size="10" fill="#8892a4">PR merged to develop</text>
+  <text x="420" y="798" text-anchor="middle" font-size="10" fill="#8892a4">task complete</text>
+  <line x1="640" y1="802" x2="670" y2="802" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="670" y1="802" x2="670" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="670" y1="536" x2="642" y2="536" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="690" y="680" font-size="9" fill="#f87171">tests</text>
+  <text x="690" y="692" font-size="9" fill="#f87171">failed</text>
+  <rect x="30" y="820" width="900" height="22" rx="4" fill="#22263a"/>
+  <text x="480" y="836" text-anchor="middle" font-size="11" font-weight="600" fill="#7c6dfa" letter-spacing="0.08em">PHASE 4 — DEPLOYMENT</text>
+  <line x1="250" y1="802" x2="250" y2="858" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="180" y="858" width="140" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="250" y="877" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">PM requests</text>
+  <text x="250" y="892" text-anchor="middle" font-size="11" fill="#8892a4">staging / prod deploy</text>
+  <line x1="320" y1="880" x2="658" y2="880" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="480" y="874" text-anchor="middle" font-size="9" fill="#fbbf24">spawn DevOps</text>
+  <rect x="660" y="858" width="120" height="44" rx="8" fill="#22263a" stroke="#7c6dfa" stroke-width="1.5"/>
+  <text x="720" y="877" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">DevOps</text>
+  <text x="720" y="892" text-anchor="middle" font-size="11" fill="#8892a4">deploys, posts URL</text>
+  <line x1="660" y1="880" x2="492" y2="880" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="350" y="858" width="140" height="44" rx="8" fill="#22263a" stroke="#2d3250" stroke-width="1"/>
+  <text x="420" y="877" text-anchor="middle" font-size="11" font-weight="600" fill="#e2e8f0">Deploy URL</text>
+  <text x="420" y="892" text-anchor="middle" font-size="10" fill="#8892a4">posted on card</text>
+  <line x1="350" y1="900" x2="152" y2="940" stroke="#8892a4" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <rect x="30" y="940" width="120" height="44" rx="8" fill="#22263a" stroke="#fbbf24" stroke-width="1"/>
+  <text x="90" y="959" text-anchor="middle" font-size="11" font-weight="600" fill="#fbbf24">Prod sign-off</text>
+  <text x="90" y="974" text-anchor="middle" font-size="10" fill="#8892a4">(optional)</text>
+  <rect x="520" y="870" width="390" height="90" rx="6" fill="#22263a" stroke="#2d3250"/>
+  <text x="540" y="890" font-size="10" font-weight="600" fill="#8892a4">LEGEND</text>
+  <line x1="540" y1="902" x2="570" y2="902" stroke="#8892a4" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="578" y="906" font-size="10" fill="#8892a4">agent action / data flow</text>
+  <line x1="540" y1="918" x2="570" y2="918" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-yellow)"/>
+  <text x="578" y="922" font-size="10" fill="#8892a4">PM spawns agent</text>
+  <line x1="540" y1="934" x2="570" y2="934" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="578" y="938" font-size="10" fill="#8892a4">human green-light / success</text>
+  <line x1="540" y1="950" x2="570" y2="950" stroke="#f87171" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="578" y="954" font-size="10" fill="#8892a4">failure / rework loop</text>
+  </svg>
+</div>
+
+<!-- ===== SETTINGS TAB ===== -->
+<div id="tab-settings" class="tab-pane">
+  <div style="max-width:560px;">
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">GitHub</h3>
+      <div class="form-group">
+        <label>MCP Server URL</label>
+        <input type="text" id="setting-github-url" placeholder="https://api.githubcopilot.com/mcp/">
+      </div>
+      <div class="form-group">
+        <label>Personal Access Token</label>
+        <input type="text" id="setting-github-token" placeholder="ghp_…">
+      </div>
+    </div>
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">Jira</h3>
+      <div class="form-group">
+        <label>MCP Server URL</label>
+        <input type="text" id="setting-jira-url" placeholder="https://mcp.atlassian.com/…">
+      </div>
+      <div class="form-group">
+        <label>API Token</label>
+        <input type="text" id="setting-jira-token" placeholder="Your Jira API token">
+      </div>
+    </div>
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">Trello</h3>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="setting-trello-key" placeholder="From trello.com/app-key">
+      </div>
+      <div class="form-group">
+        <label>Token</label>
+        <input type="text" id="setting-trello-token" placeholder="Your Trello auth token">
+      </div>
+    </div>
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;text-transform:none;letter-spacing:0;">Project Manager Watcher</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Periodically wakes the Project Manager to check Trello for changes and act on them.</p>
+      <div class="form-group" style="display:flex;align-items:center;gap:12px;">
+        <label style="margin:0;white-space:nowrap;">Enable</label>
+        <label class="toggle">
+          <input type="checkbox" id="setting-pm-poll-enabled" onchange="saveSettings()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Interval (minutes)</label>
+        <input type="text" id="setting-pm-poll-interval" placeholder="15" style="max-width:100px;">
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Last check: <span id="setting-pm-last-poll">–</span></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" onclick="triggerPmPoll()">▶ Check Now</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+    <div id="settings-msg" style="margin-top:8px;font-size:12px;"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let trendChart = null;
+let agentChart = null;
+let selectedAgentId = null;
+let agentsData = [];
+
+// ============================================================
+// Tab navigation
+// ============================================================
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  else if (event && event.target) event.target.classList.add('active');
+  if (name === 'metrics') refreshMetrics();
+  if (name === 'agents') loadAgents();
+}
+
+async function showSettingsTab(btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-settings').classList.add('active');
+  await loadSettings();
+}
+
+async function loadSettings() {
+  try {
+    const s = await api('/api/settings');
+    document.getElementById('setting-github-url').value = s.github_mcp_url || '';
+    document.getElementById('setting-github-token').value = s.github_token ? '••••••••' : '';
+    document.getElementById('setting-jira-url').value = s.jira_mcp_url || '';
+    document.getElementById('setting-jira-token').value = s.jira_token ? '••••••••' : '';
+    document.getElementById('setting-trello-key').value = s.trello_api_key ? '••••••••' : '';
+    document.getElementById('setting-trello-token').value = s.trello_token ? '••••••••' : '';
+    document.getElementById('setting-pm-poll-enabled').checked = s.pm_poll_enabled === '1';
+    document.getElementById('setting-pm-poll-interval').value = s.pm_poll_interval || '15';
+    document.getElementById('setting-pm-last-poll').textContent = s.pm_last_poll ? new Date(s.pm_last_poll).toLocaleString() : 'Never';
+  } catch(e) {
+    console.error('Failed to load settings:', e);
+  }
+}
+
+async function triggerPmPoll() {
+  const msgEl = document.getElementById('settings-msg');
+  try {
+    await api('/api/pm/poll', { method: 'POST' });
+    msgEl.textContent = 'PM check triggered — results will appear in the Metrics tab.';
+    msgEl.className = 'success-msg';
+    setTimeout(() => { msgEl.textContent = ''; }, 5000);
+  } catch(e) {
+    msgEl.textContent = 'Error: ' + e.message;
+    msgEl.className = 'error-msg';
+  }
+}
+
+async function saveSettings() {
+  const data = {};
+  const ghUrl = document.getElementById('setting-github-url').value.trim();
+  const ghToken = document.getElementById('setting-github-token').value.trim();
+  if (ghUrl) data.github_mcp_url = ghUrl;
+  if (ghToken && ghToken !== '••••••••') data.github_token = ghToken;
+  const jiraUrl = document.getElementById('setting-jira-url').value.trim();
+  const jiraToken = document.getElementById('setting-jira-token').value.trim();
+  if (jiraUrl) data.jira_mcp_url = jiraUrl;
+  if (jiraToken && jiraToken !== '••••••••') data.jira_token = jiraToken;
+  const trelloKey = document.getElementById('setting-trello-key').value.trim();
+  const trelloToken = document.getElementById('setting-trello-token').value.trim();
+  if (trelloKey && trelloKey !== '••••••••') data.trello_api_key = trelloKey;
+  if (trelloToken && trelloToken !== '••••••••') data.trello_token = trelloToken;
+  data.pm_poll_enabled = document.getElementById('setting-pm-poll-enabled').checked ? '1' : '0';
+  const interval = document.getElementById('setting-pm-poll-interval').value.trim();
+  if (interval) data.pm_poll_interval = interval;
+  const msgEl = document.getElementById('settings-msg');
+  try {
+    await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    });
+    msgEl.textContent = 'Settings saved!';
+    msgEl.className = 'success-msg';
+    setTimeout(() => { msgEl.textContent = ''; }, 3000);
+  } catch(e) {
+    msgEl.textContent = 'Error: ' + e.message;
+    msgEl.className = 'error-msg';
+  }
+}
+
+// ============================================================
+// Utilities
+// ============================================================
+function fmt(n, decimals = 0) {
+  if (n == null) return '–';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return Number(n).toFixed(decimals);
+}
+function fmtCost(v) {
+  if (v == null) return '–';
+  return '$' + Number(v).toFixed(4);
+}
+function fmtDur(v) {
+  if (v == null) return '–';
+  return Number(v).toFixed(1) + 's';
+}
+function fmtTime(ts) {
+  if (!ts) return '–';
+  const d = new Date(ts);
+  return d.toLocaleString();
+}
+function statusBadge(s) {
+  const cls = s === 'success' ? 'badge-success' : s === 'error' ? 'badge-error' : s === 'running' ? 'badge-running' : s === 'cancelled' ? 'badge-cancelled' : 'badge-unknown';
+  return `<span class="badge ${cls}">${s || 'unknown'}</span>`;
+}
+
+// ============================================================
+// API helpers
+// ============================================================
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+// ============================================================
+// Metrics Tab
+// ============================================================
+async function refreshMetrics() {
+  try {
+    const [summary, daily, perf, runs] = await Promise.all([
+      api('/api/summary'),
+      api('/api/daily?days=30'),
+      api('/api/agent_perf'),
+      api('/api/runs?limit=50'),
+    ]);
+    renderKPIs(summary);
+    renderTrendChart(daily);
+    renderAgentChart(perf);
+    renderRunsTable(runs.rows);
+    document.getElementById('last-refresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    console.error('Refresh error:', e);
+  }
+}
+
+function renderKPIs(d) {
+  document.getElementById('kpi-runs').textContent = fmt(d.total_runs);
+  document.getElementById('kpi-tokens').textContent = fmt(d.total_tokens);
+  document.getElementById('kpi-cost').textContent = fmtCost(d.total_cost);
+  document.getElementById('kpi-duration').textContent = fmtDur(d.avg_duration);
+  document.getElementById('kpi-success').textContent = (d.success_rate ?? '–') + (d.success_rate != null ? '%' : '');
+}
+
+function renderTrendChart(rows) {
+  const labels = rows.map(r => r.day);
+  const tokens = rows.map(r => r.tokens || 0);
+  const costs = rows.map(r => r.cost || 0);
+
+  const ctx = document.getElementById('trendChart');
+  if (trendChart) { trendChart.destroy(); trendChart = null; }
+  trendChart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Tokens',
+          data: tokens,
+          backgroundColor: 'rgba(124,109,250,0.5)',
+          borderColor: 'rgba(124,109,250,0.8)',
+          borderWidth: 1,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: 'Cost ($)',
+          data: costs,
+          borderColor: '#4ade80',
+          backgroundColor: 'rgba(74,222,128,0.1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.3,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { color: '#8892a4', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#8892a4', maxRotation: 45, font: { size: 10 } }, grid: { color: '#2d3250' } },
+        y: { ticks: { color: '#8892a4', font: { size: 10 } }, grid: { color: '#2d3250' }, position: 'left' },
+        y2: { ticks: { color: '#4ade80', font: { size: 10 }, callback: v => '$' + v.toFixed(4) }, grid: { drawOnChartArea: false }, position: 'right' }
+      }
+    }
+  });
+}
+
+function renderAgentChart(rows) {
+  const labels = rows.map(r => r.agent_name);
+  const durations = rows.map(r => r.avg_duration || 0);
+  const rates = rows.map(r => r.success_rate || 0);
+
+  const ctx = document.getElementById('agentChart');
+  if (agentChart) { agentChart.destroy(); agentChart = null; }
+  agentChart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Avg Duration (s)',
+          data: durations,
+          backgroundColor: 'rgba(124,109,250,0.5)',
+          borderColor: 'rgba(124,109,250,0.8)',
+          borderWidth: 1,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: 'Success Rate (%)',
+          data: rates,
+          borderColor: '#4ade80',
+          backgroundColor: 'rgba(74,222,128,0.1)',
+          borderWidth: 2,
+          pointRadius: 4,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8892a4', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#8892a4', font: { size: 10 } }, grid: { color: '#2d3250' } },
+        y: { ticks: { color: '#8892a4', font: { size: 10 }, callback: v => v.toFixed(1) + 's' }, grid: { color: '#2d3250' }, position: 'left' },
+        y2: { min: 0, max: 100, ticks: { color: '#4ade80', font: { size: 10 }, callback: v => v + '%' }, grid: { drawOnChartArea: false }, position: 'right' }
+      }
+    }
+  });
+}
+
+function renderRunsTable(rows) {
+  const tbody = document.getElementById('runs-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="mono" style="white-space:nowrap;font-size:11px;">${fmtTime(r.recorded_at)}</td>
+      <td>${r.agent_name || '–'}</td>
+      <td class="mono" style="font-size:11px;">${r.model_name || '–'}</td>
+      <td><div class="truncate" title="${escHtml(r.task_description||'')}">${escHtml(r.task_description || '–')}</div></td>
+      <td>${statusBadge(r.status)}</td>
+      <td>${fmt((r.input_tokens||0)+(r.output_tokens||0))}</td>
+      <td>${fmtCost(r.cost_usd)}</td>
+      <td style="white-space:nowrap;">
+        ${r.status === 'RUNNING'
+          ? `<span class="running-elapsed" data-started="${r.recorded_at}">…</span>
+             ${r.agent_id ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;color:var(--error);" onclick="cancelRunFromTable(${r.agent_id}, this)">■</button>` : ''}`
+          : `${fmtDur(r.duration_s)}${r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;" onclick="rerunFromTable(${r.agent_id},'${escAttr(r.task_description)}')" title="Re-run">↻</button>` : ''}`}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function rerunFromTable(agentId, taskDescription) {
+  const agentsTabBtn = document.querySelector('.tab-btn[onclick*="agents"]');
+  if (agentsTabBtn) agentsTabBtn.click();
+  // Wait for agents tab to load, then trigger rerun
+  setTimeout(() => rerunTask(agentId, taskDescription), 300);
+}
+
+async function cancelRunFromTable(agentId, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    await api(`/api/agents/${agentId}/cancel`, { method: 'POST' });
+    refreshMetrics();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '■';
+    alert('Cancel failed: ' + e.message);
+  }
+}
+
+function tickRunningElapsed() {
+  const now = Date.now();
+  document.querySelectorAll('.running-elapsed').forEach(el => {
+    const started = new Date(el.dataset.started).getTime();
+    if (!isNaN(started)) el.textContent = ((now - started) / 1000).toFixed(0) + 's';
+  });
+}
+setInterval(tickRunningElapsed, 1000);
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return s.replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'&#10;');
+}
+
+// ============================================================
+// Agents Tab
+// ============================================================
+function toggleNewAgent() {
+  const body = document.getElementById('new-agent-body');
+  const chevron = document.getElementById('new-agent-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  chevron.classList.toggle('open', open);
+}
+
+async function loadAgents() {
+  try {
+    agentsData = await api('/api/agents');
+    renderAgentList();
+    if (selectedAgentId) {
+      const a = agentsData.find(a => a.id === selectedAgentId);
+      if (a) renderAgentDetail(a);
+    }
+  } catch(e) {
+    document.getElementById('agent-list').innerHTML = `<div class="empty error-msg">Failed to load agents: ${e.message}</div>`;
+  }
+}
+
+function renderAgentList() {
+  const el = document.getElementById('agent-list');
+  if (!agentsData.length) {
+    el.innerHTML = '<div class="empty">No agents yet. Create one above.</div>';
+    return;
+  }
+  el.innerHTML = agentsData.map(a => `
+    <div class="agent-card ${a.id === selectedAgentId ? 'selected' : ''}" onclick="selectAgent(${a.id})">
+      <div class="agent-card-header">
+        <span class="agent-name">${escHtml(a.name)}</span>
+        <label class="toggle" onclick="event.stopPropagation()">
+          <input type="checkbox" ${a.enabled ? 'checked' : ''} onchange="toggleAgent(${a.id}, this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="agent-model">${escHtml(a.model)}${a.agent_type && a.agent_type !== 'standard' ? ` <span class="badge badge-${a.agent_type}">${a.agent_type}</span>` : ''}</div>
+      <div class="agent-meta">
+        <span>${a.run_count || 0} runs</span>
+        <span>${a.last_run ? 'last: ' + fmtTime(a.last_run) : 'never run'}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectAgent(id) {
+  selectedAgentId = id;
+  const agent = agentsData.find(a => a.id === id);
+  renderAgentList(); // re-render to update selection highlight
+  if (agent) renderAgentDetail(agent);
+}
+
+async function renderAgentDetail(agent) {
+  const panel = document.getElementById('agent-detail');
+  panel.innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-header">
+        <span style="font-weight:700;font-size:15px;">${escHtml(agent.name)}</span>
+        <button class="btn btn-danger btn-sm" onclick="deleteAgent(${agent.id})">Delete</button>
+      </div>
+      <div class="detail-body">
+
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Configuration</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <a href="https://docs.upsonic.ai/concepts/agents/attributes" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--muted);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">Attributes docs ↗</a>
+            <button class="btn btn-ghost btn-sm" onclick="toggleJsonEditor(${agent.id})">{ } JSON</button>
+          </div>
+        </div>
+        <div id="form-editor-${agent.id}">
+          <div class="form-group">
+            <label>Model</label>
+            <select id="edit-model-${agent.id}">
+              <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
+              <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
+              <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>claude-haiku-4-5-20251001</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Agent Type</label>
+            <select id="edit-type-${agent.id}" onchange="updateEditAgentWorkspaceVisibility(${agent.id})">
+              <option value="standard" ${(agent.agent_type||'standard')==='standard'?'selected':''}>Standard</option>
+              <option value="autonomous" ${agent.agent_type==='autonomous'?'selected':''}>Autonomous (filesystem + shell)</option>
+              <option value="deep" ${agent.agent_type==='deep'?'selected':''}>Deep (multi-step planning)</option>
+            </select>
+          </div>
+          <div class="form-group" id="edit-workspace-group-${agent.id}" style="${agent.agent_type==='autonomous'?'':'display:none;'}">
+            <label>Workspace Directory</label>
+            <input type="text" id="edit-workspace-${agent.id}" value="${escHtml(agent.workspace||'')}" placeholder="/path/to/project">
+          </div>
+          <div class="form-group">
+            <label>System Prompt</label>
+            <textarea id="edit-prompt-${agent.id}" style="min-height:80px;">${escHtml(agent.system_prompt || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Tools</label>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              ${[['WebSearchTool','WebSearchTool'],['CodeExecutionTool','CodeExecutionTool'],['GitHub','GitHub (MCP)'],['Jira','Jira (MCP)'],['Trello','Trello (MCP)'],['SpawnAgents','Spawn Agents']].map(([val, label]) => {
+                const checked = (agent.tools ? JSON.parse(agent.tools) : []).includes(val) ? 'checked' : '';
+                return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" value="${val}" class="edit-tool-cb-${agent.id}" ${checked}> ${label}</label>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Max Instances <span style="color:var(--muted);font-weight:normal;">(limits PM spawns per task)</span></label>
+            <input type="number" id="edit-max-instances-${agent.id}" min="1" value="${agent.max_instances ?? ''}" placeholder="Unlimited">
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <input type="text" id="edit-role-${agent.id}" value="${escHtml(agent.role||'')}" placeholder="e.g. Senior Software Engineer">
+          </div>
+          <div class="form-group">
+            <label>Goal</label>
+            <input type="text" id="edit-goal-${agent.id}" value="${escHtml(agent.goal||'')}" placeholder="Primary objective">
+          </div>
+          <div class="form-group">
+            <label>Instructions</label>
+            <textarea id="edit-instructions-${agent.id}" style="min-height:60px;">${escHtml(agent.instructions||'')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Education</label>
+            <input type="text" id="edit-education-${agent.id}" value="${escHtml(agent.education||'')}" placeholder="Background knowledge">
+          </div>
+          <div class="form-group">
+            <label>Work Experience</label>
+            <input type="text" id="edit-work-experience-${agent.id}" value="${escHtml(agent.work_experience||'')}" placeholder="Experience context">
+          </div>
+          <div class="form-group">
+            <label>Reasoning Effort</label>
+            <select id="edit-reasoning-effort-${agent.id}">
+              <option value="" ${!agent.reasoning_effort?'selected':''}>Default</option>
+              <option value="low" ${agent.reasoning_effort==='low'?'selected':''}>Low</option>
+              <option value="medium" ${agent.reasoning_effort==='medium'?'selected':''}>Medium</option>
+              <option value="high" ${agent.reasoning_effort==='high'?'selected':''}>High</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tool Call Limit</label>
+            <input type="number" id="edit-tool-call-limit-${agent.id}" min="1" value="${agent.tool_call_limit??''}" placeholder="Default (5)">
+          </div>
+          <div class="form-group">
+            <label>Thinking Budget <span style="color:var(--muted);font-weight:normal;">(tokens)</span></label>
+            <input type="number" id="edit-thinking-budget-${agent.id}" min="1" value="${agent.thinking_budget??''}" placeholder="None">
+          </div>
+          <div class="form-group">
+            <label style="margin-bottom:6px;">Capabilities</label>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reflection-${agent.id}" ${agent.reflection?'checked':''}> Reflection (self-evaluate output)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-thinking-tool-${agent.id}" ${agent.enable_thinking_tool?'checked':''}> Enable Thinking Tool</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reasoning-tool-${agent.id}" ${agent.enable_reasoning_tool?'checked':''}> Enable Reasoning Tool</label>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" onclick="saveAgentConfig(${agent.id})">Save Config</button>
+          </div>
+        </div>
+        <div id="json-editor-${agent.id}" style="display:none;">
+          <div class="form-group">
+            <textarea id="json-textarea-${agent.id}" style="min-height:160px;font-family:'SF Mono',Menlo,monospace;font-size:12px;line-height:1.6;"></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" onclick="saveJsonConfig(${agent.id})">Save JSON</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleJsonEditor(${agent.id})">Cancel</button>
+          </div>
+        </div>
+        <div id="edit-msg-${agent.id}"></div>
+
+        <div class="section-title" style="margin-top:24px;">Stats</div>
+        <div id="stats-${agent.id}"><em style="color:var(--muted);">Loading…</em></div>
+
+        <div class="section-title" style="margin-top:24px;">Run a Task</div>
+        <div class="form-group">
+          <textarea id="run-task-${agent.id}" placeholder="Describe what you want the agent to do…" style="min-height:80px;"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="run-btn-${agent.id}" onclick="runTask(${agent.id})">▶ Run</button>
+          <button class="btn btn-danger btn-sm" id="stop-btn-${agent.id}" onclick="stopTask(${agent.id})" style="display:none;">■ Stop</button>
+        </div>
+        <div id="run-result-${agent.id}"></div>
+
+        <div class="section-title" style="margin-top:24px;">Run History</div>
+        <div id="agent-runs-${agent.id}"><em style="color:var(--muted);">Loading…</em></div>
+
+      </div>
+    </div>
+  `;
+  loadAgentStats(agent.id);
+  loadAgentRuns(agent.id);
+}
+
+async function loadAgentStats(id) {
+  try {
+    const s = await api(`/api/agents/${id}/stats`);
+    document.getElementById(`stats-${id}`).innerHTML = `
+      <div class="stats-mini">
+        <div class="stat"><div class="label">Runs</div><div class="value accent">${fmt(s.total_runs)}</div></div>
+        <div class="stat"><div class="label">Tokens</div><div class="value">${fmt(s.total_tokens)}</div></div>
+        <div class="stat"><div class="label">Cost</div><div class="value">${fmtCost(s.total_cost)}</div></div>
+        <div class="stat"><div class="label">Avg Duration</div><div class="value">${fmtDur(s.avg_duration)}</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);">Success rate: <strong style="color:var(--success)">${s.success_rate ?? '–'}${s.success_rate != null ? '%' : ''}</strong></div>
+    `;
+  } catch(e) {
+    document.getElementById(`stats-${id}`).innerHTML = `<span class="error-msg">Failed: ${e.message}</span>`;
+  }
+}
+
+async function loadAgentRuns(id) {
+  try {
+    const data = await api(`/api/agents/${id}/runs?limit=20`);
+    const el = document.getElementById(`agent-runs-${id}`);
+    if (!data.rows.length) {
+      el.innerHTML = '<div class="empty" style="padding:20px;">No runs yet.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th>Time</th><th>Task</th><th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${data.rows.map(r => `
+              <tr>
+                <td class="mono" style="font-size:11px;white-space:nowrap;">${fmtTime(r.recorded_at)}</td>
+                <td><div class="truncate" title="${escHtml(r.task_description||'')}">${escHtml(r.task_description||'–')}</div></td>
+                <td>${statusBadge(r.status)}</td>
+                <td>${fmt((r.input_tokens||0)+(r.output_tokens||0))}</td>
+                <td>${fmtCost(r.cost_usd)}</td>
+                <td>${fmtDur(r.duration_s)}</td>
+                <td>${r.task_description ? `<button class="btn btn-ghost btn-sm" onclick="rerunTask(${id},'${escAttr(r.task_description)}')" title="Re-run this task">↻</button>` : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--muted);padding:8px 0;">Showing ${data.rows.length} of ${data.total}</div>
+    `;
+  } catch(e) {
+    document.getElementById(`agent-runs-${id}`).innerHTML = `<span class="error-msg">Failed: ${e.message}</span>`;
+  }
+}
+
+async function createAgent() {
+  const name = document.getElementById('new-agent-name').value.trim();
+  const model = document.getElementById('new-agent-model').value;
+  const system_prompt = document.getElementById('new-agent-prompt').value.trim() || null;
+  const tools = Array.from(document.querySelectorAll('.new-tool-cb:checked')).map(cb => cb.value);
+  const agent_type = document.getElementById('new-agent-type').value;
+  const workspace = document.getElementById('new-agent-workspace').value.trim();
+  const max_instances_raw = document.getElementById('new-agent-max-instances').value.trim();
+  const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
+  const errEl = document.getElementById('new-agent-error');
+  if (!name) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  try {
+    const agent = await api('/api/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, model, system_prompt, tools: tools.length ? tools : null, agent_type, workspace: workspace || null, max_instances }),
+    });
+    document.getElementById('new-agent-name').value = '';
+    document.getElementById('new-agent-prompt').value = '';
+    document.getElementById('new-agent-type').value = 'standard';
+    document.getElementById('new-agent-workspace').value = '';
+    document.getElementById('new-agent-max-instances').value = '';
+    updateNewAgentWorkspaceVisibility();
+    await loadAgents();
+    selectAgent(agent.id);
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function saveAgentConfig(id) {
+  const model = document.getElementById(`edit-model-${id}`).value;
+  const system_prompt = document.getElementById(`edit-prompt-${id}`).value.trim() || null;
+  const tools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
+  const agent_type = document.getElementById(`edit-type-${id}`).value;
+  const workspace = document.getElementById(`edit-workspace-${id}`)?.value.trim() || '';
+  const max_instances_raw = document.getElementById(`edit-max-instances-${id}`)?.value.trim();
+  const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
+  const role = document.getElementById(`edit-role-${id}`)?.value.trim() || null;
+  const goal = document.getElementById(`edit-goal-${id}`)?.value.trim() || null;
+  const instructions = document.getElementById(`edit-instructions-${id}`)?.value.trim() || null;
+  const education = document.getElementById(`edit-education-${id}`)?.value.trim() || null;
+  const work_experience = document.getElementById(`edit-work-experience-${id}`)?.value.trim() || null;
+  const reasoning_effort = document.getElementById(`edit-reasoning-effort-${id}`)?.value || null;
+  const tool_call_limit_raw = document.getElementById(`edit-tool-call-limit-${id}`)?.value.trim();
+  const tool_call_limit = tool_call_limit_raw ? parseInt(tool_call_limit_raw) : null;
+  const thinking_budget_raw = document.getElementById(`edit-thinking-budget-${id}`)?.value.trim();
+  const thinking_budget = thinking_budget_raw ? parseInt(thinking_budget_raw) : null;
+  const reflection = document.getElementById(`edit-reflection-${id}`)?.checked ?? false;
+  const enable_thinking_tool = document.getElementById(`edit-thinking-tool-${id}`)?.checked ?? false;
+  const enable_reasoning_tool = document.getElementById(`edit-reasoning-tool-${id}`)?.checked ?? false;
+  const msgEl = document.getElementById(`edit-msg-${id}`);
+  try {
+    await api(`/api/agents/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, system_prompt, tools, agent_type, workspace, max_instances, role, goal, instructions, education, work_experience, reasoning_effort, tool_call_limit, thinking_budget, reflection, enable_thinking_tool, enable_reasoning_tool }),
+    });
+    msgEl.textContent = 'Saved!';
+    msgEl.className = 'success-msg';
+    setTimeout(() => { msgEl.textContent = ''; }, 2000);
+    await loadAgents();
+  } catch(e) {
+    msgEl.textContent = 'Error: ' + e.message;
+    msgEl.className = 'error-msg';
+  }
+}
+
+function toggleJsonEditor(id) {
+  const jsonDiv = document.getElementById(`json-editor-${id}`);
+  const formDiv = document.getElementById(`form-editor-${id}`);
+  const msgEl = document.getElementById(`edit-msg-${id}`);
+  if (jsonDiv.style.display === 'none') {
+    const agent = agentsData.find(a => a.id === id);
+    const model = document.getElementById(`edit-model-${id}`).value;
+    const system_prompt = document.getElementById(`edit-prompt-${id}`).value.trim() || null;
+    const currentTools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
+    const agentType = document.getElementById(`edit-type-${id}`)?.value;
+    const workspace = document.getElementById(`edit-workspace-${id}`)?.value.trim() || null;
+    const max_instances_raw = document.getElementById(`edit-max-instances-${id}`)?.value.trim();
+    const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
+    const role = document.getElementById(`edit-role-${id}`)?.value.trim() || null;
+    const goal = document.getElementById(`edit-goal-${id}`)?.value.trim() || null;
+    const instructions = document.getElementById(`edit-instructions-${id}`)?.value.trim() || null;
+    const education = document.getElementById(`edit-education-${id}`)?.value.trim() || null;
+    const work_experience = document.getElementById(`edit-work-experience-${id}`)?.value.trim() || null;
+    const reasoning_effort = document.getElementById(`edit-reasoning-effort-${id}`)?.value || null;
+    const tool_call_limit_raw = document.getElementById(`edit-tool-call-limit-${id}`)?.value.trim();
+    const tool_call_limit = tool_call_limit_raw ? parseInt(tool_call_limit_raw) : null;
+    const thinking_budget_raw = document.getElementById(`edit-thinking-budget-${id}`)?.value.trim();
+    const thinking_budget = thinking_budget_raw ? parseInt(thinking_budget_raw) : null;
+    const reflection = document.getElementById(`edit-reflection-${id}`)?.checked ?? false;
+    const enable_thinking_tool = document.getElementById(`edit-thinking-tool-${id}`)?.checked ?? false;
+    const enable_reasoning_tool = document.getElementById(`edit-reasoning-tool-${id}`)?.checked ?? false;
+    document.getElementById(`json-textarea-${id}`).value = JSON.stringify({
+      name: agent ? agent.name : undefined,
+      model,
+      system_prompt,
+      tools: currentTools,
+      agent_type: agentType,
+      workspace,
+      max_instances,
+      role, goal, instructions, education, work_experience,
+      reasoning_effort, tool_call_limit, thinking_budget,
+      reflection, enable_thinking_tool, enable_reasoning_tool,
+      enabled: agent ? agent.enabled : undefined,
+    }, null, 2);
+    jsonDiv.style.display = '';
+    formDiv.style.display = 'none';
+    msgEl.textContent = '';
+  } else {
+    jsonDiv.style.display = 'none';
+    formDiv.style.display = '';
+    msgEl.textContent = '';
+  }
+}
+
+async function saveJsonConfig(id) {
+  const raw = document.getElementById(`json-textarea-${id}`).value;
+  const msgEl = document.getElementById(`edit-msg-${id}`);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch(e) {
+    msgEl.textContent = 'Invalid JSON: ' + e.message;
+    msgEl.className = 'error-msg';
+    return;
+  }
+  const payload = {};
+  if (parsed.name !== undefined) payload.name = parsed.name;
+  if (parsed.model !== undefined) payload.model = parsed.model;
+  if (parsed.system_prompt !== undefined) payload.system_prompt = parsed.system_prompt;
+  if (parsed.tools !== undefined) payload.tools = parsed.tools;
+  if (parsed.agent_type !== undefined) payload.agent_type = parsed.agent_type;
+  if (parsed.workspace !== undefined) payload.workspace = parsed.workspace;
+  if (parsed.max_instances !== undefined) payload.max_instances = parsed.max_instances;
+  if (parsed.enabled !== undefined) payload.enabled = parsed.enabled;
+  if (!Object.keys(payload).length) {
+    msgEl.textContent = 'No valid fields found in JSON';
+    msgEl.className = 'error-msg';
+    return;
+  }
+  try {
+    await api(`/api/agents/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    msgEl.textContent = 'Saved!';
+    msgEl.className = 'success-msg';
+    setTimeout(() => { msgEl.textContent = ''; }, 2000);
+    await loadAgents();
+  } catch(e) {
+    msgEl.textContent = 'Error: ' + e.message;
+    msgEl.className = 'error-msg';
+  }
+}
+
+async function toggleAgent(id, enabled) {
+  try {
+    await api(`/api/agents/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled ? 1 : 0 }),
+    });
+    await loadAgents();
+  } catch(e) {
+    console.error('Toggle failed:', e);
+  }
+}
+
+async function deleteAgent(id) {
+  if (!confirm('Delete this agent? This cannot be undone.')) return;
+  try {
+    await fetch(`/api/agents/${id}`, { method: 'DELETE' });
+    selectedAgentId = null;
+    document.getElementById('agent-detail').innerHTML = `
+      <div class="detail-panel">
+        <div class="detail-header">
+          <span style="color:var(--muted);font-size:13px;">Select an agent to view details</span>
+        </div>
+      </div>
+    `;
+    await loadAgents();
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+async function runTask(id) {
+  const task = document.getElementById(`run-task-${id}`).value.trim();
+  if (!task) return;
+  const btn = document.getElementById(`run-btn-${id}`);
+  const stopBtn = document.getElementById(`stop-btn-${id}`);
+  const resultEl = document.getElementById(`run-result-${id}`);
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  if (stopBtn) stopBtn.style.display = '';
+  resultEl.innerHTML = '<div class="run-output" id="run-output-' + id + '">Starting…\n</div>';
+
+  try {
+    const res = await fetch(`/api/agents/${id}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          handleRunMessage(id, msg);
+        } catch {}
+      }
+    }
+    if (buffer.trim()) {
+      try { handleRunMessage(id, JSON.parse(buffer)); } catch {}
+    }
+  } catch(e) {
+    document.getElementById(`run-output-${id}`).textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run';
+    if (stopBtn) stopBtn.style.display = 'none';
+    loadAgentStats(id);
+    loadAgentRuns(id);
+  }
+}
+
+async function stopTask(id) {
+  const stopBtn = document.getElementById(`stop-btn-${id}`);
+  if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = '■ Stopping…'; }
+  try {
+    await api(`/api/agents/${id}/cancel`, { method: 'POST' });
+  } catch(e) {
+    console.warn('Cancel failed:', e.message);
+  } finally {
+    if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = '■ Stop'; }
+  }
+}
+
+function rerunTask(agentId, taskDescription) {
+  const ta = document.getElementById(`run-task-${agentId}`);
+  if (!ta) return;
+  ta.value = taskDescription;
+  ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  runTask(agentId);
+}
+
+function handleRunMessage(id, msg) {
+  const outputEl = document.getElementById(`run-output-${id}`);
+  if (msg.type === 'error') {
+    outputEl.textContent = '❌ Error: ' + msg.message + (msg.traceback ? '\n\n' + msg.traceback : '');
+    return;
+  }
+  if (msg.type === 'progress') {
+    if (msg.event_kind === 'heartbeat') {
+      let el = outputEl.querySelector('.progress-heartbeat');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'progress-heartbeat';
+        el.style.cssText = 'color:var(--muted);font-size:12px;padding:1px 0;';
+        outputEl.appendChild(el);
+      }
+      el.textContent = `⏳ Running… (${msg.elapsed_s}s)`;
+    } else {
+      const icons = { tool_call: '🔧', tool_result: '✓', step_start: '💭', thinking: '📡' };
+      const labels = { tool_call: `Calling ${msg.tool}`, tool_result: `${msg.tool} done`, step_start: 'Thinking…', thinking: 'Requesting model…' };
+      const line = document.createElement('div');
+      line.style.cssText = 'color:var(--muted);font-size:12px;padding:1px 0;';
+      line.textContent = `${icons[msg.event_kind] || '▸'} ${labels[msg.event_kind] || msg.event_kind}`;
+      outputEl.appendChild(line);
+    }
+    outputEl.scrollTop = outputEl.scrollHeight;
+    return;
+  }
+  if (msg.type === 'output') {
+    // Append metrics below
+    const metricsHtml = `
+      <div class="run-metrics">
+        <div class="run-metric"><div class="label">Status</div><div class="value">${statusBadge(msg.status)}</div></div>
+        <div class="run-metric"><div class="label">Model</div><div class="value mono" style="font-size:11px;">${msg.model_name || '–'}</div></div>
+        <div class="run-metric"><div class="label">In Tokens</div><div class="value">${fmt(msg.input_tokens)}</div></div>
+        <div class="run-metric"><div class="label">Out Tokens</div><div class="value">${fmt(msg.output_tokens)}</div></div>
+        <div class="run-metric"><div class="label">Cost</div><div class="value">${fmtCost(msg.cost_usd)}</div></div>
+        <div class="run-metric"><div class="label">Duration</div><div class="value">${fmtDur(msg.duration_s)}</div></div>
+        <div class="run-metric"><div class="label">LLM Requests</div><div class="value">${fmt(msg.llm_requests)}</div></div>
+        <div class="run-metric"><div class="label">Tool Calls</div><div class="value">${fmt(msg.tool_calls)}</div></div>
+      </div>
+    `;
+    const resultEl = document.getElementById(`run-result-${id}`);
+    resultEl.innerHTML = `<div class="run-output">${marked.parse(msg.output || '*(no output)*')}</div>` + metricsHtml;
+  }
+}
+
+// ============================================================
+// Agent type / workspace visibility helpers
+// ============================================================
+function updateNewAgentWorkspaceVisibility() {
+  const type = document.getElementById('new-agent-type').value;
+  document.getElementById('new-agent-workspace-group').style.display = type === 'autonomous' ? '' : 'none';
+}
+
+function updateEditAgentWorkspaceVisibility(id) {
+  const type = document.getElementById(`edit-type-${id}`).value;
+  document.getElementById(`edit-workspace-group-${id}`).style.display = type === 'autonomous' ? '' : 'none';
+}
+
+// ============================================================
+// New Project
+// ============================================================
+let designDocContent = null;
+
+function handleDocDrop(event) {
+  event.preventDefault();
+  document.getElementById('upload-drop-zone').style.borderColor = 'var(--border)';
+  const file = event.dataTransfer.files[0];
+  if (file) loadDesignDoc(file);
+}
+
+function loadDesignDoc(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    designDocContent = e.target.result;
+    // Meta bar
+    const meta = document.getElementById('design-doc-meta');
+    meta.style.display = 'flex';
+    document.getElementById('design-doc-filename').textContent = file.name;
+    document.getElementById('design-doc-size').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    // Preview
+    document.getElementById('design-doc-preview-card').style.display = '';
+    document.getElementById('design-doc-preview').innerHTML = marked.parse(designDocContent);
+    // Enable submit
+    document.getElementById('submit-doc-btn').disabled = false;
+    // Reset any previous output
+    document.getElementById('submit-doc-result').style.display = 'none';
+  };
+  reader.readAsText(file);
+}
+
+function clearDesignDoc() {
+  designDocContent = null;
+  document.getElementById('design-doc-file').value = '';
+  document.getElementById('design-doc-meta').style.display = 'none';
+  document.getElementById('design-doc-preview-card').style.display = 'none';
+  document.getElementById('submit-doc-btn').disabled = true;
+  document.getElementById('submit-doc-result').style.display = 'none';
+}
+
+async function submitDesignDoc() {
+  if (!designDocContent) return;
+
+  // Find Project Manager agent
+  let agents = agentsData;
+  if (!agents || agents.length === 0) {
+    try {
+      const data = await api('/api/agents');
+      agents = data;
+    } catch(e) {
+      alert('Could not load agents: ' + e.message);
+      return;
+    }
+  }
+  const pm = agents.find(a => a.name === 'Project Manager');
+  if (!pm) {
+    alert('Project Manager agent not found. Make sure it is created and enabled.');
+    return;
+  }
+
+  const btn = document.getElementById('submit-doc-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+
+  const resultEl = document.getElementById('submit-doc-result');
+  const outputEl = document.getElementById('submit-doc-output');
+  const metricsEl = document.getElementById('submit-doc-metrics');
+  resultEl.style.display = '';
+  outputEl.textContent = 'Starting…\n';
+  metricsEl.innerHTML = '';
+
+  const task = `You have received a new project design document. Here is the full content:\n\n${designDocContent}\n\nCreate a new Trello board for this project, add a design document card with the full content above, and simultaneously spawn the Architect to review it and DevOps to create the GitHub repository.`;
+
+  try {
+    const res = await fetch(`/api/agents/${pm.id}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === 'error') {
+            outputEl.textContent = '❌ Error: ' + msg.message + (msg.traceback ? '\n\n' + msg.traceback : '');
+          } else if (msg.type === 'progress') {
+            if (msg.event_kind === 'heartbeat') {
+              let el = outputEl.querySelector('.progress-heartbeat');
+              if (!el) {
+                el = document.createElement('div');
+                el.className = 'progress-heartbeat';
+                el.style.cssText = 'color:var(--muted);font-size:12px;padding:1px 0;';
+                outputEl.appendChild(el);
+              }
+              el.textContent = `⏳ Running… (${msg.elapsed_s}s)`;
+            } else {
+              const icons = { tool_call: '🔧', tool_result: '✓', step_start: '💭', thinking: '📡' };
+              const labels = { tool_call: `Calling ${msg.tool}`, tool_result: `${msg.tool} done`, step_start: 'Thinking…', thinking: 'Requesting model…' };
+              const line = document.createElement('div');
+              line.style.cssText = 'color:var(--muted);font-size:12px;padding:1px 0;';
+              line.textContent = `${icons[msg.event_kind] || '▸'} ${labels[msg.event_kind] || msg.event_kind}`;
+              outputEl.appendChild(line);
+            }
+            outputEl.scrollTop = outputEl.scrollHeight;
+          } else if (msg.type === 'output') {
+            outputEl.innerHTML = marked.parse(msg.output || '*(no output)*');
+            metricsEl.innerHTML = `
+              <div class="run-metrics">
+                <div class="run-metric"><div class="label">Status</div><div class="value">${statusBadge(msg.status)}</div></div>
+                <div class="run-metric"><div class="label">Model</div><div class="value mono" style="font-size:11px;">${msg.model_name || '–'}</div></div>
+                <div class="run-metric"><div class="label">In Tokens</div><div class="value">${fmt(msg.input_tokens)}</div></div>
+                <div class="run-metric"><div class="label">Out Tokens</div><div class="value">${fmt(msg.output_tokens)}</div></div>
+                <div class="run-metric"><div class="label">Cost</div><div class="value">${fmtCost(msg.cost_usd)}</div></div>
+                <div class="run-metric"><div class="label">Duration</div><div class="value">${fmtDur(msg.duration_s)}</div></div>
+                <div class="run-metric"><div class="label">Tool Calls</div><div class="value">${fmt(msg.tool_calls)}</div></div>
+              </div>`;
+          }
+        } catch {}
+      }
+    }
+  } catch(e) {
+    outputEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send to Project Manager';
+  }
+}
+
+// ============================================================
+// Init + Auto-refresh
+// ============================================================
+refreshMetrics();
+setInterval(refreshMetrics, 30000);
+</script>
+</body>
+</html>
