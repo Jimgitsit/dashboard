@@ -129,13 +129,18 @@ dashboard/
 ├── tracker.py      # Records run results to the database
 └── static/
     └── index.html  # Single-file SPA
-setup_agents.py     # Script to seed the default workflow agent team
+teams/
+└── dev-team.py     # Script to seed the default workflow agent team
 workflow.svg        # Diagram of the multi-agent workflow
 ```
 
 ## Workflow agents
 
-`setup_agents.py` seeds a ready-to-use software development team:
+Agent teams are defined in the `teams/` folder. Each script seeds a named team into the dashboard.
+
+### Dev team (`teams/dev-team.py`)
+
+A ready-to-use software development team:
 
 | Agent | Role |
 |---|---|
@@ -145,9 +150,11 @@ workflow.svg        # Diagram of the multi-agent workflow
 | Developer | Implements task cards, opens PRs |
 | Code Reviewer | Reviews PRs for correctness, security, and quality |
 | Tester | Validates implementations and merges approved PRs |
+| Assistant | General-purpose ad-hoc queries |
+| Designer | UI/UX design guidance |
 
 Run it against a live dashboard to create or update all agents:
 
 ```bash
-python setup_agents.py
+python teams/dev-team.py
 ```
