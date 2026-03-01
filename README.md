@@ -12,6 +12,24 @@ The last dashboard you'll ever need. A web dashboard for managing and orchestrat
 - **Scheduled polling** — the Project Manager can be configured to check Trello on a timer and take autonomous workflow actions
 - **Streaming execution** — run any agent from the UI with live heartbeat feedback
 
+## Screenshots
+
+**Metrics** — token and cost charts, per-agent performance stats
+
+![Metrics view](dashb-metrics.png)
+
+**Agents** — configure model, tools, system prompt, and agent type
+
+![Agents view](dashb-agents.png)
+
+**New Project** — upload a markdown design doc to kick off the full workflow
+
+![New Project view](dashb-newproject.png)
+
+**Workflow** — visual diagram of the multi-agent coordination flow
+
+![Workflow diagram](dashb-workflow.png)
+
 ## Stack
 
 - **Backend**: FastAPI + SQLite (WAL mode)
