@@ -49,10 +49,11 @@ AGENTS = [
         "instructions": """\
 You coordinate a software development team. You operate in two modes.
 
-IMPORTANT: Always act autonomously. Only ask a human what to do next if you can't decide on your own. When a situation
-matches one of the patterns below, take the action immediately without asking for confirmation.
-If you are unsure what to do, pick the most logical action and do it. If you absolutely must ask a human what to do, ask in a comment
-on the task.
+IMPORTANT: You are a fully autonomous agent. Never ask for permission or confirmation. Never announce what you
+are about to do — just do it. Your response must only describe actions you have already taken, never actions
+you are planning or considering. Do not use future tense ("I will", "I'm going to", "I can"). Use past tense
+("I spawned", "I created", "I moved"). If you catch yourself about to ask a question or seek approval, stop
+and take the action instead. Asking a human what to do is a failure.
 
 ## New Project Mode
 When given a design document, do ALL of the following:
@@ -79,7 +80,9 @@ and take the appropriate action immediately. For "Ready for dev" or similar, spa
 Developer agent with the full card details, the repo name, and any Architect notes.
 
 **Task card in "Backlog" or "To Do" with no developer working on it:**
-Spawn the Developer agent with the full card details, the repo name, and any Architect notes.
+Spawn the Developer directly unless the card involves significant architectural decisions, new infrastructure,
+or complex system design with no Architect notes yet — in those cases spawn the Architect first.
+Simple tasks (UI tweaks, bug fixes, small features) go straight to the Developer. Do not ask — just pick and act.
 
 **Task card in "In Review" (has a PR link, awaiting code review):**
 Spawn the Code Reviewer with the PR URL, repo name, and card details.
@@ -97,7 +100,6 @@ Do not leave the card in this state once a human has responded — act on their 
 Do not spawn an agent for a card that already has a pending action in progress.
 Summarize every board checked, every card acted on, and what action was taken.\
 """,
-        "reflection": True,
         "tool_call_limit": 60,
     },
     {
@@ -190,7 +192,6 @@ You implement software tasks assigned via Trello cards.
 
 Stay focused — only build what the card asks for. No scope creep.\
 """,
-        "reflection": True,
         "tool_call_limit": 80,
     },
     {
@@ -265,13 +266,15 @@ def get_existing_agents() -> dict:
 
 def upsert_agent(agent: dict, existing: dict) -> None:
     name = agent["name"]
+    # Always send reflection explicitly so PATCH clears it when not set
+    payload = {"reflection": False, **agent}
     if name in existing:
         agent_id = existing[name]["id"]
-        resp = requests.patch(f"{BASE}/api/agents/{agent_id}", json=agent, timeout=10)
+        resp = requests.patch(f"{BASE}/api/agents/{agent_id}", json=payload, timeout=10)
         resp.raise_for_status()
         print(f"  Updated : {name}")
     else:
-        resp = requests.post(f"{BASE}/api/agents", json=agent, timeout=10)
+        resp = requests.post(f"{BASE}/api/agents", json=payload, timeout=10)
         resp.raise_for_status()
         print(f"  Created : {name}")
 

@@ -652,11 +652,12 @@ class SpawnAgentsTool:
         self._spawn_counts: dict = {}
 
     def run_agent(self, agent_name: str, task: str) -> str:
-        """Run a named agent with a task and return its output.
-        Use this to delegate work to specialized agents.
-        agent_name: Exact name of the agent to run — 'Architect', 'DevOps', 'Developer', 'Code Reviewer', or 'Tester'.
+        """Spawn a named agent to work on a task in the background.
+        The agent runs independently — do not wait for it to finish.
+        agent_name: Exact name of the agent to spawn — 'Architect', 'DevOps', 'Developer', 'Code Reviewer', or 'Tester'.
         task: Full task description including all context the agent needs.
         """
+        import threading
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from upsonic import Task  # type: ignore
 
@@ -668,15 +669,12 @@ class SpawnAgentsTool:
             return f"Error: agent '{agent_name}' not found or is disabled."
 
         cfg = dict(row)
-        max_instances = cfg.get("max_instances")
-        if max_instances is not None:
-            current = self._spawn_counts.get(agent_name, 0)
-            if current >= max_instances:
-                return (
-                    f"Error: max instances ({max_instances}) of agent '{agent_name}' "
-                    f"already reached for this task. Cannot spawn another."
-                )
-        self._spawn_counts[agent_name] = self._spawn_counts.get(agent_name, 0) + 1
+
+        # Check if this agent is already running
+        agent_id_spawned = cfg["id"]
+        with _running_lock:
+            if agent_id_spawned in _running_tasks:
+                return f"Agent '{agent_name}' is already running. It will pick up further work on the next polling cycle."
 
         # Provision an isolated git worktree for autonomous agents
         worktree_info = None
@@ -692,7 +690,6 @@ class SpawnAgentsTool:
         tools = _build_tools(cfg)
         agent = _instantiate_agent(cfg, tools)
         t = Task(task)
-        agent_id_spawned = cfg["id"]
         temp_run_id = str(uuid.uuid4())
         with get_conn() as conn:
             conn.execute(
@@ -701,24 +698,28 @@ class SpawnAgentsTool:
             )
         with _running_lock:
             _running_tasks[agent_id_spawned] = {"agent": agent, "task": task}
-        succeeded = False
-        try:
-            result = agent.do(t, return_output=True)
-            track(result, agent_name=cfg["name"], task=t)
-            succeeded = True
-            return getattr(result, "output", str(result)) or "(no output)"
-        except Exception as e:
-            return f"Error running agent '{agent_name}': {e}\n{traceback.format_exc()}"
-        finally:
-            with _running_lock:
-                _running_tasks.pop(agent_id_spawned, None)
-            with get_conn() as conn:
-                if succeeded:
-                    conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
-                else:
-                    conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))
-            if worktree_info:
-                _remove_worktree(*worktree_info)
+
+        def _run():
+            succeeded = False
+            try:
+                result = agent.do(t, return_output=True)
+                track(result, agent_name=cfg["name"], task=t)
+                succeeded = True
+            except Exception:
+                pass
+            finally:
+                with _running_lock:
+                    _running_tasks.pop(agent_id_spawned, None)
+                with get_conn() as conn:
+                    if succeeded:
+                        conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
+                    else:
+                        conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))
+                if worktree_info:
+                    _remove_worktree(*worktree_info)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return f"Agent '{agent_name}' spawned successfully and is running in the background."
 
 
 @app.post("/api/agents/{agent_id}/run")
@@ -756,9 +757,29 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                 if "SpawnAgents" in tool_names:
                     tools.append(SpawnAgentsTool())
                 agent = _instantiate_agent(agent_cfg, tools)
+
+                # For the PM, expand vague polling requests into the full structured task
+                task_text = body.task
+                if agent_cfg.get("name") == "Project Manager":
+                    _poll_keywords = {"poll", "check", "backlog", "trello", "workflow", "board"}
+                    if any(kw in task_text.lower() for kw in _poll_keywords):
+                        task_text = (
+                            "Polling Mode: inspect every card on every project board. "
+                            "This is your authorization to take ALL applicable workflow actions immediately — "
+                            "do not ask for permission. For each card in scope, take the appropriate action:\n"
+                            "- Task card in 'Backlog' or 'To Do' with no developer assigned → call run_agent('Developer', ...) now\n"
+                            "- Task card in 'In Review' (PR opened) → call run_agent('Code Reviewer', ...) now\n"
+                            "- Task card where Code Reviewer approved → call run_agent('Tester', ...) now\n"
+                            "- Card with a technical question → call run_agent('Architect', ...) now\n"
+                            "- Card blocked on a human decision → leave a comment describing the blocker\n"
+                            "Do not announce what you are about to do. Call run_agent and then report what you did. "
+                            "Do not spawn an agent for a card that already has a pending action in progress. "
+                            "Summarize every board checked, every card acted on, and what action was taken."
+                        )
+
                 with _running_lock:
-                    _running_tasks[agent_id] = {"agent": agent, "task": body.task}
-                task = Task(body.task)
+                    _running_tasks[agent_id] = {"agent": agent, "task": task_text}
+                task = Task(task_text)
                 result = agent.do(task, return_output=True)
                 track(result, agent_name=agent_cfg["name"], task=task)
                 result_holder["result"] = result
