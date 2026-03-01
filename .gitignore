@@ -7,3 +7,4 @@ dashboard.db-wal
 dashboard.log
 .venv/
 .claude/
+.idea/
