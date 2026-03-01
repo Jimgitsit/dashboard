@@ -2,3 +2,5 @@
 
 - You can restart the server with: launchctl unload ~/Library/LaunchAgents/local.upsonic.dashboard.plist && launchctl load ~/Library/LaunchAgents/local.upsonic.dashboard.plist
 
+- For local dev, start the server directly in the virtual environment: .venv/bin/python -m dashboard.run
+
