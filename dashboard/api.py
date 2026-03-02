@@ -4,15 +4,78 @@ import asyncio
 import json
 import logging
 import queue
-import subprocess
+import re
 import sys
-import tempfile
 import threading
 import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+# ---------------------------------------------------------------------------
+# Thread-local stdout capture (routes agent output to per-run queues)
+# ---------------------------------------------------------------------------
+
+_ANSI_ESCAPE = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+
+class _ThreadedStdout:
+    """sys.stdout proxy that routes per-thread writes to registered queues.
+
+    Threads without a registered queue write through to the real stdout.
+    Install once at module level: sys.stdout = _ThreadedStdout(sys.stdout)
+    """
+
+    def __init__(self, real):
+        self._real = real
+        self._lock = threading.Lock()
+        self._queues: dict = {}   # thread_id -> queue.Queue
+        self._buffers: dict = {}  # thread_id -> str (partial line accumulator)
+
+    def register(self, q: queue.Queue) -> None:
+        tid = threading.current_thread().ident
+        with self._lock:
+            self._queues[tid] = q
+            self._buffers[tid] = ''
+
+    def unregister(self) -> None:
+        tid = threading.current_thread().ident
+        with self._lock:
+            q = self._queues.pop(tid, None)
+            buf = self._buffers.pop(tid, '')
+        # Flush any partial (no-newline) line remaining in the buffer
+        if q is not None and buf:
+            clean = _ANSI_ESCAPE.sub('', buf).strip()
+            if clean:
+                q.put(clean)
+
+    def write(self, s: str) -> int:
+        tid = threading.current_thread().ident
+        with self._lock:
+            q = self._queues.get(tid)
+            if q is None:
+                return self._real.write(s)
+            self._buffers[tid] = self._buffers.get(tid, '') + s
+            buf = self._buffers[tid]
+            parts = buf.split('\n')
+            self._buffers[tid] = parts[-1]  # keep the incomplete tail
+            complete = parts[:-1]
+        for line in complete:
+            clean = _ANSI_ESCAPE.sub('', line).strip()
+            if clean:
+                q.put(clean)
+        return len(s)
+
+    def flush(self) -> None:
+        self._real.flush()
+
+    def __getattr__(self, name: str):
+        return getattr(self._real, name)
+
+
+_threaded_stdout = _ThreadedStdout(sys.stdout)
+sys.stdout = _threaded_stdout
 
 logger = logging.getLogger("upsonic.pm_watcher")
 
@@ -303,6 +366,20 @@ async def trigger_pm_poll():
     return {"ok": True, "message": "PM check triggered"}
 
 
+@app.post("/api/server/restart")
+async def restart_server():
+    """Restart the dashboard server process using os.execv."""
+    import os
+
+    async def _do_restart():
+        # Brief delay to allow the HTTP response to be sent before we replace the process
+        await asyncio.sleep(0.5)
+        os.execv(sys.executable, [sys.executable, "-m", "dashboard.run"])
+
+    asyncio.create_task(_do_restart())
+    return {"ok": True, "message": "Server is restarting…"}
+
+
 @app.get("/api/settings")
 def get_settings():
     with get_conn() as conn:
@@ -588,8 +665,9 @@ def _instantiate_agent(cfg: dict, tools: list):
     model = cfg["model"]
     if agent_type == "autonomous":
         from upsonic import AutonomousAgent  # type: ignore
+        # Callers must supply a fresh per-invocation workspace path via cfg["workspace"].
         workspace = cfg.get("workspace") or "."
-        return AutonomousAgent(model, workspace=workspace, **kwargs)
+        return AutonomousAgent(model, workspace=str(workspace), **kwargs)
     elif agent_type == "deep":
         from upsonic.agent import DeepAgent  # type: ignore
         return DeepAgent(model, **kwargs)
@@ -599,50 +677,41 @@ def _instantiate_agent(cfg: dict, tools: list):
 
 
 # ---------------------------------------------------------------------------
-# Git worktree helpers for isolated developer workspaces
+# Per-invocation workspace helpers
 # ---------------------------------------------------------------------------
 
-def _is_git_repo(path: str) -> bool:
-    try:
-        subprocess.run(
-            ["git", "rev-parse", "--git-dir"],
-            cwd=path, check=True, capture_output=True,
-        )
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+_WORKSPACES_ROOT = Path(__file__).parent.parent / "workspaces"
+# Match Trello card short-link (most reliable — it's always a card, never a board)
+_TRELLO_SHORT_LINK_RE = re.compile(r'trello\.com/c/([A-Za-z0-9]+)')
+# Match "Card ID:" or "(ID: <hex>)" patterns (card-specific context)
+_TRELLO_CARD_ID_RE = re.compile(r'(?:Card\s+ID|Card:[^\n]*\(ID)[:\s]*([0-9a-f]{24})', re.IGNORECASE)
 
 
-def _create_worktree(repo_path: str):
-    """Create a throw-away worktree. Returns (worktree_path, branch_name) or None."""
-    branch = f"worktree-{uuid.uuid4().hex[:8]}"
-    worktree_path = str(Path(tempfile.gettempdir()) / f"upsonic-{branch}")
-    try:
-        subprocess.run(
-            ["git", "worktree", "add", worktree_path, "-b", branch],
-            cwd=repo_path, check=True, capture_output=True,
-        )
-        return worktree_path, branch
-    except subprocess.CalledProcessError:
-        return None
+def _workspace_key(task: str) -> str | None:
+    """Extract a stable per-card key from a task description, or None."""
+    # Prefer the URL short-link — it's unambiguous and always a card
+    m = _TRELLO_SHORT_LINK_RE.search(task)
+    if m:
+        return m.group(1)
+    # Fall back to a card-ID-in-context pattern
+    m = _TRELLO_CARD_ID_RE.search(task)
+    if m:
+        return m.group(1)
+    return None
 
 
-def _remove_worktree(repo_path: str, worktree_path: str, branch: str) -> None:
-    """Remove a worktree and its ephemeral branch; ignore errors."""
-    try:
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", worktree_path],
-            cwd=repo_path, check=True, capture_output=True,
-        )
-    except Exception:
-        pass
-    try:
-        subprocess.run(
-            ["git", "branch", "-D", branch],
-            cwd=repo_path, check=True, capture_output=True,
-        )
-    except Exception:
-        pass
+def _make_workspace(task: str = "") -> str:
+    """Return the workspace path for this task, creating it if needed.
+
+    Tasks with a Trello card ID get a stable workspace directory that persists
+    across re-invocations so agents can resume where they left off.
+    All other tasks get a fresh unique workspace each time.
+    """
+    _WORKSPACES_ROOT.mkdir(exist_ok=True)
+    key = _workspace_key(task)
+    ws = _WORKSPACES_ROOT / key if key else _WORKSPACES_ROOT / uuid.uuid4().hex[:12]
+    ws.mkdir(exist_ok=True)
+    return str(ws)
 
 
 class SpawnAgentsTool:
@@ -676,16 +745,11 @@ class SpawnAgentsTool:
             if agent_id_spawned in _running_tasks:
                 return f"Agent '{agent_name}' is already running. It will pick up further work on the next polling cycle."
 
-        # Provision an isolated git worktree for autonomous agents
-        worktree_info = None
+        # Give autonomous agents a stable per-task workspace.
+        workspace_path = None
         if cfg.get("agent_type") == "autonomous":
-            workspace = cfg.get("workspace")
-            if workspace and Path(workspace).is_dir() and _is_git_repo(workspace):
-                wt = _create_worktree(workspace)
-                if wt:
-                    worktree_path, branch = wt
-                    worktree_info = (workspace, worktree_path, branch)
-                    cfg["workspace"] = worktree_path
+            workspace_path = _make_workspace(task)
+            cfg["workspace"] = workspace_path
 
         tools = _build_tools(cfg)
         agent = _instantiate_agent(cfg, tools)
@@ -693,20 +757,27 @@ class SpawnAgentsTool:
         temp_run_id = str(uuid.uuid4())
         with get_conn() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status) VALUES (?, ?, ?, ?, ?)",
-                (temp_run_id, datetime.now(timezone.utc).isoformat(), cfg["name"], task, "RUNNING"),
+                "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status, workspace) VALUES (?, ?, ?, ?, ?, ?)",
+                (temp_run_id, datetime.now(timezone.utc).isoformat(), cfg["name"], task, "RUNNING", workspace_path),
             )
         with _running_lock:
             _running_tasks[agent_id_spawned] = {"agent": agent, "task": task}
 
         def _run():
             succeeded = False
+            error_tb = None
             try:
                 result = agent.do(t, return_output=True)
                 track(result, agent_name=cfg["name"], task=t)
+                # Stamp the real run record with the workspace path.
+                real_run_id = getattr(result, "run_id", None)
+                if real_run_id and workspace_path:
+                    with get_conn() as conn:
+                        conn.execute("UPDATE runs SET workspace = ? WHERE run_id = ?", (workspace_path, real_run_id))
                 succeeded = True
             except Exception:
-                pass
+                error_tb = traceback.format_exc()
+                logger.error("Spawned agent '%s' raised an exception:\n%s", agent_name, error_tb)
             finally:
                 with _running_lock:
                     _running_tasks.pop(agent_id_spawned, None)
@@ -714,12 +785,28 @@ class SpawnAgentsTool:
                     if succeeded:
                         conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
                     else:
-                        conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))
-                if worktree_info:
-                    _remove_worktree(*worktree_info)
+                        conn.execute(
+                            "UPDATE runs SET status = 'FAILED', output_text = ? WHERE run_id = ?",
+                            (error_tb, temp_run_id),
+                        )
 
         threading.Thread(target=_run, daemon=True).start()
         return f"Agent '{agent_name}' spawned successfully and is running in the background."
+
+    def cleanup_workspace(self, trello_card_url: str) -> str:
+        """Delete the local workspace directory for a completed Trello card.
+        Call this when a card is moved to 'Done'.
+        trello_card_url: The Trello card URL (e.g. https://trello.com/c/XXXXX/...) or its short-link ID.
+        """
+        import shutil
+        key = _workspace_key(trello_card_url)
+        if not key:
+            return f"Could not extract workspace key from: {trello_card_url}"
+        ws = _WORKSPACES_ROOT / key
+        if ws.exists():
+            shutil.rmtree(ws)
+            return f"Workspace '{key}' deleted."
+        return f"Workspace '{key}' does not exist (already cleaned up)."
 
 
 @app.post("/api/agents/{agent_id}/run")
@@ -739,24 +826,35 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
         result_holder: dict = {}
         temp_run_id = str(uuid.uuid4())
         wall_start = time.monotonic()
+        log_q: queue.Queue = queue.Queue()
+
+        # Resolve workspace before inserting the RUNNING row so we can record it.
+        workspace_path = None
+        if agent_cfg.get("agent_type") == "autonomous":
+            workspace_path = _make_workspace(body.task)
 
         # Insert RUNNING row immediately so it shows in the task list
         with get_conn() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status) VALUES (?, ?, ?, ?, ?)",
-                (temp_run_id, datetime.now(timezone.utc).isoformat(), agent_cfg["name"], body.task, "RUNNING"),
+                "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status, workspace) VALUES (?, ?, ?, ?, ?, ?)",
+                (temp_run_id, datetime.now(timezone.utc).isoformat(), agent_cfg["name"], body.task, "RUNNING", workspace_path),
             )
 
         def run_sync():
+            _threaded_stdout.register(log_q)
             try:
                 sys.path.insert(0, str(Path(__file__).parent.parent))
                 from upsonic import Task  # type: ignore
 
-                tools = _build_tools(agent_cfg)
-                tool_names = json.loads(agent_cfg.get("tools") or "[]")
+                cfg = dict(agent_cfg)
+                if workspace_path:
+                    cfg["workspace"] = workspace_path
+
+                tools = _build_tools(cfg)
+                tool_names = json.loads(cfg.get("tools") or "[]")
                 if "SpawnAgents" in tool_names:
                     tools.append(SpawnAgentsTool())
-                agent = _instantiate_agent(agent_cfg, tools)
+                agent = _instantiate_agent(cfg, tools)
 
                 # For the PM, expand vague polling requests into the full structured task
                 task_text = body.task
@@ -782,6 +880,11 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                 task = Task(task_text)
                 result = agent.do(task, return_output=True)
                 track(result, agent_name=agent_cfg["name"], task=task)
+                # Stamp workspace onto the real run record created by track().
+                real_run_id = getattr(result, "run_id", None)
+                if real_run_id and workspace_path:
+                    with get_conn() as conn:
+                        conn.execute("UPDATE runs SET workspace = ? WHERE run_id = ?", (workspace_path, real_run_id))
                 result_holder["result"] = result
                 result_holder["error"] = None
             except Exception as e:
@@ -789,6 +892,7 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                 result_holder["error"] = str(e)
                 result_holder["traceback"] = traceback.format_exc()
             finally:
+                _threaded_stdout.unregister()
                 with _running_lock:
                     _running_tasks.pop(agent_id, None)
                 with get_conn() as conn:
@@ -797,15 +901,37 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                     else:
                         conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
 
+        _POLL = 0.5
         future = loop.run_in_executor(None, run_sync)
-        elapsed = 0
+        elapsed = 0.0
+        last_heartbeat = 0.0
         while True:
             try:
-                await asyncio.wait_for(asyncio.shield(future), timeout=5.0)
+                await asyncio.wait_for(asyncio.shield(future), timeout=_POLL)
                 break
             except asyncio.TimeoutError:
-                elapsed += 5
-                yield json.dumps({"type": "progress", "event_kind": "heartbeat", "elapsed_s": elapsed}) + "\n"
+                elapsed += _POLL
+                lines: list = []
+                try:
+                    while True:
+                        lines.append(log_q.get_nowait())
+                except queue.Empty:
+                    pass
+                if lines:
+                    yield json.dumps({"type": "log", "lines": lines, "elapsed_s": round(elapsed, 1)}) + "\n"
+                elif elapsed - last_heartbeat >= 5.0:
+                    last_heartbeat = elapsed
+                    yield json.dumps({"type": "progress", "event_kind": "heartbeat", "elapsed_s": int(elapsed)}) + "\n"
+
+        # Drain any remaining lines buffered after run_sync finishes
+        remaining: list = []
+        try:
+            while True:
+                remaining.append(log_q.get_nowait())
+        except queue.Empty:
+            pass
+        if remaining:
+            yield json.dumps({"type": "log", "lines": remaining, "elapsed_s": round(elapsed, 1)}) + "\n"
 
         wall_duration = time.monotonic() - wall_start
 
