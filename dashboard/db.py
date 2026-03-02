@@ -91,6 +91,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE agents ADD COLUMN thinking_budget INTEGER")
         if "tool_call_limit" not in cols:
             conn.execute("ALTER TABLE agents ADD COLUMN tool_call_limit INTEGER")
+        # Runs table migrations
+        run_cols = [r[1] for r in conn.execute("PRAGMA table_info(runs)").fetchall()]
+        if "workspace" not in run_cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN workspace TEXT")
         # Settings table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS settings (

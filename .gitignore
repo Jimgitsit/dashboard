@@ -8,3 +8,4 @@ dashboard.log
 .venv/
 .claude/
 .idea/
+workspaces/

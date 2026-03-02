@@ -97,6 +97,10 @@ Spawn the Architect to answer it. Post the answer back on the card.
 Leave a clear comment on the card describing exactly what decision is needed.
 Do not leave the card in this state once a human has responded — act on their response.
 
+**Card in "Done":**
+Call `cleanup_workspace` with the card's URL to delete its local workspace directory.
+This is safe to call even if the workspace was already cleaned up.
+
 Do not spawn an agent for a card that already has a pending action in progress.
 Summarize every board checked, every card acted on, and what action was taken.\
 """,
@@ -171,28 +175,51 @@ You handle all infrastructure for the development team.
         "name": "Developer",
         "model": "claude-sonnet-4-6",
         "agent_type": "autonomous",
-        "tools": ["WebSearchTool", "CodeExecutionTool", "GitHub", "Trello"],
+        "tools": ["WebSearchTool", "GitHub", "Trello"],
         "role": "Software developer",
         "goal": (
             "Implement tasks cleanly and completely, with clear PRs "
             "that are easy to review and meet all acceptance criteria."
         ),
         "instructions": """\
-You implement software tasks assigned via Trello cards.
+You implement software tasks assigned via Trello cards. All code changes go directly into
+GitHub via `create_or_update_file` or `push_files` — no local git clone, no shell commands.
 
-1. Read the Trello card carefully — understand the description, acceptance criteria, and any Architect notes.
-2. Inspect the GitHub repo to understand the existing code structure and conventions.
-3. Create a feature branch from develop: feature/<card-name-slug>
-4. Implement the task fully, meeting every acceptance criterion.
-5. Write or update tests as needed.
-6. Open a PR against develop:
+## CRITICAL: Context budget — you will run out of memory if you break these rules
+You have a limited context window. Large files consume most of it. Follow this strictly:
+
+- Use `search_code` to locate where changes go. Do NOT read a file unless you are
+  immediately about to write it back.
+- **Read one file → write it → commit. Then move to the next file.** Never read two
+  large files before writing. If the task touches both `api.py` AND `index.html`,
+  do them in two separate steps: finish `api.py` completely first, then do `index.html`.
+- The two largest files are `api.py` (~900 lines) and `index.html` (~1500 lines).
+  Reading both in the same context will overflow your memory and the run will end
+  before you can write anything. You must handle them one at a time.
+- When you read a file with `get_file_contents`, write it back with `create_or_update_file`
+  in your VERY NEXT action. Do not do anything else in between.
+
+## Workflow
+
+1. **Read the Trello card** — understand the description and acceptance criteria.
+
+2. **Create a feature branch** from main (or develop if it exists): `feature/<card-name-slug>`
+
+3. **For each file that needs changes** (one at a time):
+   a. Use `search_code` to find the exact location of the change.
+   b. Call `get_file_contents` on that file. Note the `sha` field — you need it to update.
+   c. In your immediate next action, call `create_or_update_file` with the full modified
+      content and the sha. Write real, complete code — no placeholders or TODOs.
+
+4. **Open a PR** against main (or develop):
    - Title: matches the Trello card title
-   - Description: what was done, why, and a link to the Trello card
-7. Move the Trello card to "In Review" and add the PR URL as a comment.
+   - Description: what was changed and a link to the Trello card
+
+5. **Update Trello**: move the card to "In Review" and post the PR URL as a comment.
 
 Stay focused — only build what the card asks for. No scope creep.\
 """,
-        "tool_call_limit": 80,
+        "tool_call_limit": 100,
     },
     {
         "name": "Code Reviewer",

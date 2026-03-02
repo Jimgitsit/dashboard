@@ -129,6 +129,7 @@
   .run-output th { background: var(--surface2); }
   .run-output a { color: var(--accent); }
   .run-output hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .log-line { color: #7d8fa3; font-size: 11px; font-family: 'SF Mono', Menlo, monospace; padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
   .run-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 10px; }
   .run-metric { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
   .run-metric .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -157,9 +158,47 @@
     .charts-grid { grid-template-columns: 1fr; }
     .agents-layout { grid-template-columns: 1fr; }
   }
+
+  /* Restart Server Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px 32px; max-width: 420px; width: 90%; box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+  .modal-card h2 { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+  .modal-warning {
+    background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3);
+    border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--warning);
+    margin-bottom: 20px; line-height: 1.5;
+  }
+  .modal-warning strong { display: block; margin-bottom: 4px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-status { font-size: 12px; margin-top: 12px; min-height: 18px; text-align: center; }
 </style>
 </head>
 <body>
+
+<!-- Restart Server Modal -->
+<div class="modal-overlay" id="restart-modal">
+  <div class="modal-card">
+    <h2>Restart Server</h2>
+    <div class="modal-warning">
+      <strong>Warning</strong>
+      Restarting the server will stop all running agents. Any in-progress tasks will be interrupted and their results will be lost.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="restart-cancel-btn" onclick="closeRestartModal()">Cancel</button>
+      <button class="btn" id="restart-confirm-btn"
+        style="background:rgba(248,113,113,0.15);color:var(--danger);border:1px solid rgba(248,113,113,0.4);"
+        onclick="confirmRestart()">Confirm Restart</button>
+    </div>
+    <div class="modal-status" id="restart-modal-status"></div>
+  </div>
+</div>
 
 <div class="header">
   <div>
@@ -169,6 +208,7 @@
   <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
     <span id="last-refresh" class="refresh-note">–</span>
     <button class="btn btn-ghost btn-sm" onclick="refreshMetrics()">↻ Refresh</button>
+    <button class="btn btn-sm" id="restart-btn" onclick="openRestartModal()" style="background:rgba(248,113,113,0.12);color:var(--danger);border:1px solid rgba(248,113,113,0.3);" title="Restart Server">⟳ Restart Server</button>
     <button class="btn btn-ghost btn-sm" onclick="showSettingsTab(this)" title="Settings">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"/>
@@ -247,15 +287,11 @@
           </div>
           <div class="form-group">
             <label>Agent Type</label>
-            <select id="new-agent-type" onchange="updateNewAgentWorkspaceVisibility()">
+            <select id="new-agent-type">
               <option value="standard">Standard</option>
               <option value="autonomous">Autonomous (filesystem + shell)</option>
               <option value="deep">Deep (multi-step planning)</option>
             </select>
-          </div>
-          <div class="form-group" id="new-agent-workspace-group" style="display:none;">
-            <label>Workspace Directory</label>
-            <input type="text" id="new-agent-workspace" placeholder="/path/to/project">
           </div>
           <div class="form-group">
             <label>System Prompt (optional)</label>
@@ -605,6 +641,7 @@ let trendChart = null;
 let agentChart = null;
 let selectedAgentId = null;
 let agentsData = [];
+const _runTaskMap = new Map(); // run DB id -> {agentId, task}
 
 // ============================================================
 // Tab navigation
@@ -853,7 +890,9 @@ function renderRunsTable(rows) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = rows.map(r => {
+    if (r.agent_id && r.task_description) _runTaskMap.set(r.id, { agentId: r.agent_id, task: r.task_description, fromTable: true });
+    return `
     <tr>
       <td class="mono" style="white-space:nowrap;font-size:11px;">${fmtTime(r.recorded_at)}</td>
       <td>${r.agent_name || '–'}</td>
@@ -866,17 +905,29 @@ function renderRunsTable(rows) {
         ${r.status === 'RUNNING'
           ? `<span class="running-elapsed" data-started="${r.recorded_at}">…</span>
              ${r.agent_id ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;color:var(--error);" onclick="cancelRunFromTable(${r.agent_id}, this)">■</button>` : ''}`
-          : `${fmtDur(r.duration_s)}${r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;" onclick="rerunFromTable(${r.agent_id},'${escAttr(r.task_description)}')" title="Re-run">↻</button>` : ''}`}
+          : `${fmtDur(r.duration_s)}${r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;" onclick="rerunFromRunId(${r.id})" title="Re-run">↻</button>` : ''}`}
       </td>
     </tr>
-  `).join('');
+  `}).join('');
 }
 
-function rerunFromTable(agentId, taskDescription) {
-  const agentsTabBtn = document.querySelector('.tab-btn[onclick*="agents"]');
-  if (agentsTabBtn) agentsTabBtn.click();
-  // Wait for agents tab to load, then trigger rerun
-  setTimeout(() => rerunTask(agentId, taskDescription), 300);
+async function rerunFromTable(agentId, taskDescription) {
+  // Switch to agents tab manually so we can await loadAgents()
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-agents').classList.add('active');
+  document.querySelector('.tab-btn[onclick*="agents"]')?.classList.add('active');
+  // Set selectedAgentId BEFORE loading so renderAgentDetail is called
+  selectedAgentId = agentId;
+  await loadAgents();
+  rerunTask(agentId, taskDescription);
+}
+
+function rerunFromRunId(runDbId) {
+  const d = _runTaskMap.get(runDbId);
+  if (!d || !d.agentId) return;
+  if (d.fromTable) rerunFromTable(d.agentId, d.task);
+  else rerunTask(d.agentId, d.task);
 }
 
 async function cancelRunFromTable(agentId, btn) {
@@ -991,15 +1042,11 @@ async function renderAgentDetail(agent) {
           </div>
           <div class="form-group">
             <label>Agent Type</label>
-            <select id="edit-type-${agent.id}" onchange="updateEditAgentWorkspaceVisibility(${agent.id})">
+            <select id="edit-type-${agent.id}">
               <option value="standard" ${(agent.agent_type||'standard')==='standard'?'selected':''}>Standard</option>
               <option value="autonomous" ${agent.agent_type==='autonomous'?'selected':''}>Autonomous (filesystem + shell)</option>
               <option value="deep" ${agent.agent_type==='deep'?'selected':''}>Deep (multi-step planning)</option>
             </select>
-          </div>
-          <div class="form-group" id="edit-workspace-group-${agent.id}" style="${agent.agent_type==='autonomous'?'':'display:none;'}">
-            <label>Workspace Directory</label>
-            <input type="text" id="edit-workspace-${agent.id}" value="${escHtml(agent.workspace||'')}" placeholder="/path/to/project">
           </div>
           <div class="form-group">
             <label>System Prompt</label>
@@ -1133,7 +1180,9 @@ async function loadAgentRuns(id) {
             <th>Time</th><th>Task</th><th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
           </tr></thead>
           <tbody>
-            ${data.rows.map(r => `
+            ${data.rows.map(r => {
+              if (r.task_description) _runTaskMap.set(r.id, { agentId: id, task: r.task_description, fromTable: false });
+              return `
               <tr>
                 <td class="mono" style="font-size:11px;white-space:nowrap;">${fmtTime(r.recorded_at)}</td>
                 <td><div class="truncate" title="${escHtml(r.task_description||'')}">${escHtml(r.task_description||'–')}</div></td>
@@ -1141,9 +1190,10 @@ async function loadAgentRuns(id) {
                 <td>${fmt((r.input_tokens||0)+(r.output_tokens||0))}</td>
                 <td>${fmtCost(r.cost_usd)}</td>
                 <td>${fmtDur(r.duration_s)}</td>
-                <td>${r.task_description ? `<button class="btn btn-ghost btn-sm" onclick="rerunTask(${id},'${escAttr(r.task_description)}')" title="Re-run this task">↻</button>` : ''}</td>
+                <td>${r.task_description ? `<button class="btn btn-ghost btn-sm" onclick="rerunFromRunId(${r.id})" title="Re-run this task">↻</button>` : ''}</td>
               </tr>
-            `).join('')}
+              ${r.output_text ? `<tr><td colspan="7" style="padding:0 0 8px 0;"><pre style="margin:0;padding:8px 10px;background:#0a0c14;border:1px solid var(--border);border-radius:6px;font-size:10px;color:#e07070;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow-y:auto;">${escHtml(r.output_text)}</pre></td></tr>` : ''}
+            `}).join('')}
           </tbody>
         </table>
       </div>
@@ -1160,7 +1210,6 @@ async function createAgent() {
   const system_prompt = document.getElementById('new-agent-prompt').value.trim() || null;
   const tools = Array.from(document.querySelectorAll('.new-tool-cb:checked')).map(cb => cb.value);
   const agent_type = document.getElementById('new-agent-type').value;
-  const workspace = document.getElementById('new-agent-workspace').value.trim();
   const max_instances_raw = document.getElementById('new-agent-max-instances').value.trim();
   const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
   const errEl = document.getElementById('new-agent-error');
@@ -1170,14 +1219,12 @@ async function createAgent() {
     const agent = await api('/api/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, model, system_prompt, tools: tools.length ? tools : null, agent_type, workspace: workspace || null, max_instances }),
+      body: JSON.stringify({ name, model, system_prompt, tools: tools.length ? tools : null, agent_type, max_instances }),
     });
     document.getElementById('new-agent-name').value = '';
     document.getElementById('new-agent-prompt').value = '';
     document.getElementById('new-agent-type').value = 'standard';
-    document.getElementById('new-agent-workspace').value = '';
     document.getElementById('new-agent-max-instances').value = '';
-    updateNewAgentWorkspaceVisibility();
     await loadAgents();
     selectAgent(agent.id);
   } catch(e) {
@@ -1191,7 +1238,6 @@ async function saveAgentConfig(id) {
   const system_prompt = document.getElementById(`edit-prompt-${id}`).value.trim() || null;
   const tools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
   const agent_type = document.getElementById(`edit-type-${id}`).value;
-  const workspace = document.getElementById(`edit-workspace-${id}`)?.value.trim() || '';
   const max_instances_raw = document.getElementById(`edit-max-instances-${id}`)?.value.trim();
   const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
   const role = document.getElementById(`edit-role-${id}`)?.value.trim() || null;
@@ -1212,7 +1258,7 @@ async function saveAgentConfig(id) {
     await api(`/api/agents/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system_prompt, tools, agent_type, workspace, max_instances, role, goal, instructions, education, work_experience, reasoning_effort, tool_call_limit, thinking_budget, reflection, enable_thinking_tool, enable_reasoning_tool }),
+      body: JSON.stringify({ model, system_prompt, tools, agent_type, max_instances, role, goal, instructions, education, work_experience, reasoning_effort, tool_call_limit, thinking_budget, reflection, enable_thinking_tool, enable_reasoning_tool }),
     });
     msgEl.textContent = 'Saved!';
     msgEl.className = 'success-msg';
@@ -1234,7 +1280,6 @@ function toggleJsonEditor(id) {
     const system_prompt = document.getElementById(`edit-prompt-${id}`).value.trim() || null;
     const currentTools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
     const agentType = document.getElementById(`edit-type-${id}`)?.value;
-    const workspace = document.getElementById(`edit-workspace-${id}`)?.value.trim() || null;
     const max_instances_raw = document.getElementById(`edit-max-instances-${id}`)?.value.trim();
     const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
     const role = document.getElementById(`edit-role-${id}`)?.value.trim() || null;
@@ -1256,7 +1301,6 @@ function toggleJsonEditor(id) {
       system_prompt,
       tools: currentTools,
       agent_type: agentType,
-      workspace,
       max_instances,
       role, goal, instructions, education, work_experience,
       reasoning_effort, tool_call_limit, thinking_budget,
@@ -1354,7 +1398,7 @@ async function runTask(id) {
   btn.disabled = true;
   btn.textContent = '⏳ Running…';
   if (stopBtn) stopBtn.style.display = '';
-  resultEl.innerHTML = '<div class="run-output" id="run-output-' + id + '">Starting…\n</div>';
+  resultEl.innerHTML = '<div class="run-output" id="run-output-' + id + '"><div class="log-line" style="color:var(--muted)">▶ Starting\u2026</div></div>';
 
   try {
     const res = await fetch(`/api/agents/${id}/run`, {
@@ -1421,6 +1465,29 @@ function handleRunMessage(id, msg) {
     outputEl.textContent = '❌ Error: ' + msg.message + (msg.traceback ? '\n\n' + msg.traceback : '');
     return;
   }
+  if (msg.type === 'log') {
+    if (!outputEl) return;
+    const hb = outputEl.querySelector('.progress-heartbeat');
+    for (const line of (msg.lines || [])) {
+      const lineEl = document.createElement('div');
+      lineEl.className = 'log-line';
+      lineEl.textContent = line;
+      hb ? outputEl.insertBefore(lineEl, hb) : outputEl.appendChild(lineEl);
+    }
+    // Keep elapsed indicator up to date even when log lines are flowing
+    if (msg.elapsed_s !== undefined) {
+      let el = hb || outputEl.querySelector('.progress-heartbeat');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'progress-heartbeat';
+        el.style.cssText = 'color:var(--muted);font-size:11px;padding:4px 0 0;margin-top:2px;border-top:1px solid var(--border);';
+        outputEl.appendChild(el);
+      }
+      el.textContent = `⏳ Running\u2026 (${msg.elapsed_s}s)`;
+    }
+    outputEl.scrollTop = outputEl.scrollHeight;
+    return;
+  }
   if (msg.type === 'progress') {
     if (msg.event_kind === 'heartbeat') {
       let el = outputEl.querySelector('.progress-heartbeat');
@@ -1461,18 +1528,7 @@ function handleRunMessage(id, msg) {
   }
 }
 
-// ============================================================
-// Agent type / workspace visibility helpers
-// ============================================================
-function updateNewAgentWorkspaceVisibility() {
-  const type = document.getElementById('new-agent-type').value;
-  document.getElementById('new-agent-workspace-group').style.display = type === 'autonomous' ? '' : 'none';
-}
 
-function updateEditAgentWorkspaceVisibility(id) {
-  const type = document.getElementById(`edit-type-${id}`).value;
-  document.getElementById(`edit-workspace-group-${id}`).style.display = type === 'autonomous' ? '' : 'none';
-}
 
 // ============================================================
 // New Project
@@ -1614,6 +1670,78 @@ async function submitDesignDoc() {
     btn.textContent = 'Send to Project Manager';
   }
 }
+
+// ============================================================
+// Restart Server
+// ============================================================
+function openRestartModal() {
+  document.getElementById('restart-modal').classList.add('open');
+  document.getElementById('restart-modal-status').textContent = '';
+  document.getElementById('restart-confirm-btn').disabled = false;
+  document.getElementById('restart-confirm-btn').textContent = 'Confirm Restart';
+  document.getElementById('restart-cancel-btn').disabled = false;
+}
+
+function closeRestartModal() {
+  document.getElementById('restart-modal').classList.remove('open');
+}
+
+async function confirmRestart() {
+  const confirmBtn = document.getElementById('restart-confirm-btn');
+  const cancelBtn = document.getElementById('restart-cancel-btn');
+  const statusEl = document.getElementById('restart-modal-status');
+  const restartBtn = document.getElementById('restart-btn');
+
+  confirmBtn.disabled = true;
+  cancelBtn.disabled = true;
+  confirmBtn.textContent = 'Restarting…';
+  statusEl.style.color = 'var(--warning)';
+  statusEl.textContent = 'Sending restart request…';
+
+  try {
+    const resp = await fetch('/api/server/restart', { method: 'POST' });
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const data = await resp.json();
+    statusEl.style.color = 'var(--success)';
+    statusEl.textContent = 'Server is restarting. This page will reload in a few seconds…';
+    restartBtn.disabled = true;
+    restartBtn.textContent = '⟳ Restarting…';
+
+    // Poll until the server is back up, then reload the page
+    const deadline = Date.now() + 30000; // 30 s timeout
+    const poll = async () => {
+      if (Date.now() > deadline) {
+        statusEl.style.color = 'var(--danger)';
+        statusEl.textContent = 'Server did not come back within 30 s. Try refreshing manually.';
+        restartBtn.disabled = false;
+        restartBtn.textContent = '⟳ Restart Server';
+        return;
+      }
+      try {
+        const probe = await fetch('/api/summary', { cache: 'no-store' });
+        if (probe.ok) {
+          window.location.reload();
+          return;
+        }
+      } catch (_) { /* server still down, keep polling */ }
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 2000); // give the process a moment to exit first
+  } catch (err) {
+    statusEl.style.color = 'var(--danger)';
+    statusEl.textContent = 'Error: ' + err.message;
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Confirm Restart';
+    cancelBtn.disabled = false;
+  }
+}
+
+// Close modal on overlay click (outside the card)
+document.getElementById('restart-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeRestartModal();
+});
 
 // ============================================================
 // Init + Auto-refresh
