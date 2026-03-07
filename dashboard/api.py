@@ -99,11 +99,13 @@ except Exception:
 
 app = FastAPI(title="Upsonic Dashboard")
 
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 # In-memory registry of running tasks (agent_id → {agent, task})
 _running_tasks: dict = {}
+_running_counts: dict = {}  # agent_id → number of currently running instances
 _running_lock = threading.Lock()
-
-STATIC_DIR = Path(__file__).parent / "static"
 
 # ---------------------------------------------------------------------------
 # Startup
@@ -215,6 +217,7 @@ def _run_pm_poll():
         agent = _instantiate_agent(cfg, tools)
         with _running_lock:
             _running_tasks[agent_id] = {"agent": agent, "task": task_text}
+            _running_counts[agent_id] = _running_counts.get(agent_id, 0) + 1
 
         succeeded = False
         try:
@@ -230,6 +233,9 @@ def _run_pm_poll():
         finally:
             with _running_lock:
                 _running_tasks.pop(agent_id, None)
+                _running_counts[agent_id] = max(0, _running_counts.get(agent_id, 1) - 1)
+                if not _running_counts[agent_id]:
+                    del _running_counts[agent_id]
             with get_conn() as conn:
                 if succeeded:
                     conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
@@ -739,11 +745,12 @@ class SpawnAgentsTool:
 
         cfg = dict(row)
 
-        # Check if this agent is already running
+        # Check against max_instances limit (applies globally, not just PM spawns)
         agent_id_spawned = cfg["id"]
+        max_inst = cfg.get("max_instances") or 1
         with _running_lock:
-            if agent_id_spawned in _running_tasks:
-                return f"Agent '{agent_name}' is already running. It will pick up further work on the next polling cycle."
+            if _running_counts.get(agent_id_spawned, 0) >= max_inst:
+                return f"Agent '{agent_name}' is at its concurrency limit ({max_inst}). It will pick up further work on the next polling cycle."
 
         # Give autonomous agents a stable per-task workspace.
         workspace_path = None
@@ -762,6 +769,7 @@ class SpawnAgentsTool:
             )
         with _running_lock:
             _running_tasks[agent_id_spawned] = {"agent": agent, "task": task}
+            _running_counts[agent_id_spawned] = _running_counts.get(agent_id_spawned, 0) + 1
 
         def _run():
             succeeded = False
@@ -781,6 +789,9 @@ class SpawnAgentsTool:
             finally:
                 with _running_lock:
                     _running_tasks.pop(agent_id_spawned, None)
+                    _running_counts[agent_id_spawned] = max(0, _running_counts.get(agent_id_spawned, 1) - 1)
+                    if not _running_counts[agent_id_spawned]:
+                        del _running_counts[agent_id_spawned]
                 with get_conn() as conn:
                     if succeeded:
                         conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
@@ -875,8 +886,14 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                             "Summarize every board checked, every card acted on, and what action was taken."
                         )
 
+                max_inst = agent_cfg.get("max_instances") or 1
                 with _running_lock:
+                    if _running_counts.get(agent_id, 0) >= max_inst:
+                        result_holder["error"] = True
+                        result_holder["output"] = f"Agent is already at its concurrency limit ({max_inst})."
+                        return
                     _running_tasks[agent_id] = {"agent": agent, "task": task_text}
+                    _running_counts[agent_id] = _running_counts.get(agent_id, 0) + 1
                 task = Task(task_text)
                 result = agent.do(task, return_output=True)
                 track(result, agent_name=agent_cfg["name"], task=task)
@@ -895,6 +912,9 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                 _threaded_stdout.unregister()
                 with _running_lock:
                     _running_tasks.pop(agent_id, None)
+                    _running_counts[agent_id] = max(0, _running_counts.get(agent_id, 1) - 1)
+                    if not _running_counts[agent_id]:
+                        del _running_counts[agent_id]
                 with get_conn() as conn:
                     if result_holder.get("error"):
                         conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))

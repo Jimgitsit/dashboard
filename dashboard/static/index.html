@@ -87,6 +87,12 @@
   /* Detail panel */
   .detail-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
   .detail-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .detail-tabs { display: flex; gap: 0; padding: 0 16px; border-bottom: 1px solid var(--border); }
+  .detail-tab-btn { padding: 10px 14px; cursor: pointer; background: none; border: none; color: var(--muted); font-size: 13px; border-bottom: 2px solid transparent; transition: all 0.15s; margin-bottom: -1px; }
+  .detail-tab-btn:hover { color: var(--text); }
+  .detail-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .detail-tab-pane { display: none; }
+  .detail-tab-pane.active { display: block; }
   .detail-body { padding: 20px; }
   .section-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; margin-top: 20px; }
   .section-title:first-child { margin-top: 0; }
@@ -94,13 +100,31 @@
   /* Forms */
   .form-group { margin-bottom: 14px; }
   label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
-  input[type=text], textarea, select {
-    width: 100%; background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text); padding: 8px 10px; font-size: 13px;
-    font-family: inherit; outline: none; transition: border-color 0.15s;
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    width: 100%;
+    background: #13162080;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
   }
-  input[type=text]:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  input[type=text]:hover, input[type=number]:hover, input[type=password]:hover, textarea:hover, select:hover {
+    border-color: #4a5070;
+  }
+  input[type=text]:focus, input[type=number]:focus, input[type=password]:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+    background: #13162090;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 3px rgba(124,109,250,0.15);
+  }
+  input::placeholder, textarea::placeholder { color: #4a5270; }
   textarea { resize: vertical; min-height: 80px; }
+  select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238892a4' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; cursor: pointer; }
+  select option { background: #1a1d27; }
   .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
   .btn-primary { background: var(--accent); color: white; }
   .btn-primary:hover { opacity: 0.85; }
@@ -267,9 +291,6 @@
   <div class="agents-layout">
     <!-- Left column: list + new form -->
     <div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-        <button class="btn btn-ghost btn-sm" onclick="exportAgents()">↓ Export Agents</button>
-      </div>
       <div class="new-agent-card" style="margin-bottom:16px;">
         <h3 onclick="toggleNewAgent()">
           <span>+ New Agent</span>
@@ -324,7 +345,7 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Max Instances <span style="color:var(--muted);font-weight:normal;">(optional — limits how many times the PM can spawn this agent per task)</span></label>
+            <label>Max Concurrent Instances</label>
             <input type="number" id="new-agent-max-instances" min="1" value="1" placeholder="Unlimited">
           </div>
           <div id="new-agent-error" class="error-msg" style="display:none;"></div>
@@ -334,6 +355,9 @@
 
       <div id="agent-list" class="agent-list">
         <div class="empty">Loading…</div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+        <button class="btn btn-ghost btn-sm" onclick="exportAgents()">↓ Export Agents</button>
       </div>
     </div>
 
@@ -463,6 +487,8 @@
     <div class="btn-row">
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
       <button class="btn btn-ghost" onclick="exportSettings()">↓ Export Config</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('import-settings-file').click()">↑ Import Config</button>
+      <input type="file" id="import-settings-file" accept=".json" style="display:none;" onchange="importSettings(this)">
     </div>
     <div id="settings-msg" style="margin-top:8px;font-size:12px;"></div>
   </div>
@@ -501,6 +527,14 @@ async function showSettingsTab(btn) {
   await loadSettings();
 }
 
+function showDetailTab(tabId, btn) {
+  const panel = btn.closest('.detail-panel');
+  panel.querySelectorAll('.detail-tab-pane').forEach(p => p.classList.remove('active'));
+  panel.querySelectorAll('.detail-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('detail-tab-' + tabId).classList.add('active');
+  btn.classList.add('active');
+}
+
 async function loadSettings() {
   try {
     const s = await api('/api/settings');
@@ -508,7 +542,7 @@ async function loadSettings() {
     document.getElementById('setting-github-token').value = s.github_token ? '••••••••' : '';
     document.getElementById('setting-jira-url').value = s.jira_mcp_url || '';
     document.getElementById('setting-jira-token').value = s.jira_token ? '••••••••' : '';
-    document.getElementById('setting-trello-key').value = s.trello_api_key ? '••••••••' : '';
+    document.getElementById('setting-trello-key').value = s.trello_api_key || '';
     document.getElementById('setting-trello-token').value = s.trello_token ? '••••••••' : '';
     document.getElementById('setting-pm-poll-enabled').checked = s.pm_poll_enabled === '1';
     document.getElementById('setting-pm-poll-interval').value = s.pm_poll_interval || '15';
@@ -543,7 +577,7 @@ async function saveSettings() {
   if (jiraToken && jiraToken !== '••••••••') data.jira_token = jiraToken;
   const trelloKey = document.getElementById('setting-trello-key').value.trim();
   const trelloToken = document.getElementById('setting-trello-token').value.trim();
-  if (trelloKey && trelloKey !== '••••••••') data.trello_api_key = trelloKey;
+  if (trelloKey) data.trello_api_key = trelloKey;
   if (trelloToken && trelloToken !== '••••••••') data.trello_token = trelloToken;
   data.pm_poll_enabled = document.getElementById('setting-pm-poll-enabled').checked ? '1' : '0';
   const interval = document.getElementById('setting-pm-poll-interval').value.trim();
@@ -860,128 +894,164 @@ async function renderAgentDetail(agent) {
         <span style="font-weight:700;font-size:15px;">${escHtml(agent.name)}</span>
         <button class="btn btn-danger btn-sm" onclick="deleteAgent(${agent.id})">Delete</button>
       </div>
+      <div class="detail-tabs">
+        <button class="detail-tab-btn active" onclick="showDetailTab('config-${agent.id}', this)">Config</button>
+        <button class="detail-tab-btn" onclick="showDetailTab('run-${agent.id}', this)">Run</button>
+        <button class="detail-tab-btn" onclick="showDetailTab('history-${agent.id}', this)">History</button>
+      </div>
       <div class="detail-body">
 
-        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-          <span>Configuration</span>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <a href="https://docs.upsonic.ai/concepts/agents/attributes" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--muted);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">Attributes docs ↗</a>
-            <button class="btn btn-ghost btn-sm" onclick="toggleJsonEditor(${agent.id})">{ } JSON</button>
-          </div>
-        </div>
-        <div id="form-editor-${agent.id}">
-          <div class="form-group">
-            <label>Model</label>
-            <select id="edit-model-${agent.id}">
-              <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
-              <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
-              <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>claude-haiku-4-5-20251001</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Agent Type</label>
-            <select id="edit-type-${agent.id}">
-              <option value="standard" ${(agent.agent_type||'standard')==='standard'?'selected':''}>Standard</option>
-              <option value="autonomous" ${agent.agent_type==='autonomous'?'selected':''}>Autonomous (filesystem + shell)</option>
-              <option value="deep" ${agent.agent_type==='deep'?'selected':''}>Deep (multi-step planning)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>System Prompt</label>
-            <textarea id="edit-prompt-${agent.id}" style="min-height:80px;">${escHtml(agent.system_prompt || '')}</textarea>
-          </div>
-          <div class="form-group">
-            <label>Tools</label>
-            <div style="display:flex;flex-direction:column;gap:6px;">
-              ${[['WebSearchTool','WebSearchTool'],['CodeExecutionTool','CodeExecutionTool'],['GitHub','GitHub (MCP)'],['Jira','Jira (MCP)'],['Trello','Trello (MCP)'],['SpawnAgents','Spawn Agents']].map(([val, label]) => {
-                const checked = (agent.tools ? JSON.parse(agent.tools) : []).includes(val) ? 'checked' : '';
-                return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" value="${val}" class="edit-tool-cb-${agent.id}" ${checked}> ${label}</label>`;
-              }).join('')}
+        <!-- Config tab -->
+        <div id="detail-tab-config-${agent.id}" class="detail-tab-pane active">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Configuration</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <a href="https://docs.upsonic.ai/concepts/agents/attributes" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--muted);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">Attributes docs ↗</a>
+              <button class="btn btn-ghost btn-sm" onclick="toggleJsonEditor(${agent.id})">{ } JSON</button>
             </div>
           </div>
-          <div class="form-group">
-            <label>Max Instances <span style="color:var(--muted);font-weight:normal;">(limits PM spawns per task)</span></label>
-            <input type="number" id="edit-max-instances-${agent.id}" min="1" value="${agent.max_instances ?? ''}" placeholder="Unlimited">
-          </div>
-          <div class="form-group">
-            <label>Role</label>
-            <input type="text" id="edit-role-${agent.id}" value="${escHtml(agent.role||'')}" placeholder="e.g. Senior Software Engineer">
-          </div>
-          <div class="form-group">
-            <label>Goal</label>
-            <input type="text" id="edit-goal-${agent.id}" value="${escHtml(agent.goal||'')}" placeholder="Primary objective">
-          </div>
-          <div class="form-group">
-            <label>Instructions</label>
-            <textarea id="edit-instructions-${agent.id}" style="min-height:60px;">${escHtml(agent.instructions||'')}</textarea>
-          </div>
-          <div class="form-group">
-            <label>Education</label>
-            <input type="text" id="edit-education-${agent.id}" value="${escHtml(agent.education||'')}" placeholder="Background knowledge">
-          </div>
-          <div class="form-group">
-            <label>Work Experience</label>
-            <input type="text" id="edit-work-experience-${agent.id}" value="${escHtml(agent.work_experience||'')}" placeholder="Experience context">
-          </div>
-          <div class="form-group">
-            <label>Reasoning Effort</label>
-            <select id="edit-reasoning-effort-${agent.id}">
-              <option value="" ${!agent.reasoning_effort?'selected':''}>Default</option>
-              <option value="low" ${agent.reasoning_effort==='low'?'selected':''}>Low</option>
-              <option value="medium" ${agent.reasoning_effort==='medium'?'selected':''}>Medium</option>
-              <option value="high" ${agent.reasoning_effort==='high'?'selected':''}>High</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Tool Call Limit</label>
-            <input type="number" id="edit-tool-call-limit-${agent.id}" min="1" value="${agent.tool_call_limit??''}" placeholder="Default (5)">
-          </div>
-          <div class="form-group">
-            <label>Thinking Budget <span style="color:var(--muted);font-weight:normal;">(tokens)</span></label>
-            <input type="number" id="edit-thinking-budget-${agent.id}" min="1" value="${agent.thinking_budget??''}" placeholder="None">
-          </div>
-          <div class="form-group">
-            <label style="margin-bottom:6px;">Capabilities</label>
-            <div style="display:flex;flex-direction:column;gap:6px;">
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reflection-${agent.id}" ${agent.reflection?'checked':''}> Reflection (self-evaluate output)</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-thinking-tool-${agent.id}" ${agent.enable_thinking_tool?'checked':''}> Enable Thinking Tool</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reasoning-tool-${agent.id}" ${agent.enable_reasoning_tool?'checked':''}> Enable Reasoning Tool</label>
+          <div id="form-editor-${agent.id}">
+            <!-- Row: Model + Agent Type -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+              <div class="form-group">
+                <label>Model</label>
+                <select id="edit-model-${agent.id}">
+                  <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
+                  <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
+                  <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>claude-haiku-4-5-20251001</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Agent Type</label>
+                <select id="edit-type-${agent.id}">
+                  <option value="standard" ${(agent.agent_type||'standard')==='standard'?'selected':''}>Standard</option>
+                  <option value="autonomous" ${agent.agent_type==='autonomous'?'selected':''}>Autonomous (filesystem + shell)</option>
+                  <option value="deep" ${agent.agent_type==='deep'?'selected':''}>Deep (multi-step planning)</option>
+                </select>
+              </div>
+            </div>
+            <!-- Full: Tools (2-col checkbox grid) -->
+            <div class="form-group">
+              <label>Tools</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                ${[['WebSearchTool','WebSearchTool'],['CodeExecutionTool','CodeExecutionTool'],['GitHub','GitHub (MCP)'],['Jira','Jira (MCP)'],['Trello','Trello (MCP)'],['SpawnAgents','Spawn Agents']].map(([val, label]) => {
+                  const checked = (agent.tools ? JSON.parse(agent.tools) : []).includes(val) ? 'checked' : '';
+                  return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" value="${val}" class="edit-tool-cb-${agent.id}" ${checked}> ${label}</label>`;
+                }).join('')}
+              </div>
+            </div>
+            <!-- Row: Role + Goal -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+              <div class="form-group">
+                <label>Role</label>
+                <input type="text" id="edit-role-${agent.id}" value="${escHtml(agent.role||'')}" placeholder="e.g. Senior Software Engineer">
+              </div>
+              <div class="form-group">
+                <label>Goal</label>
+                <input type="text" id="edit-goal-${agent.id}" value="${escHtml(agent.goal||'')}" placeholder="Primary objective">
+              </div>
+            </div>
+            <!-- Full: Instructions -->
+            <div class="form-group">
+              <label>Instructions</label>
+              <textarea id="edit-instructions-${agent.id}" style="min-height:80px;">${escHtml(agent.instructions||'')}</textarea>
+            </div>
+            <!-- Row: Education + Work Experience -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+              <div class="form-group">
+                <label>Education</label>
+                <input type="text" id="edit-education-${agent.id}" value="${escHtml(agent.education||'')}" placeholder="Background knowledge">
+              </div>
+              <div class="form-group">
+                <label>Work Experience</label>
+                <input type="text" id="edit-work-experience-${agent.id}" value="${escHtml(agent.work_experience||'')}" placeholder="Experience context">
+              </div>
+            </div>
+            <!-- Row: Reasoning Effort + Tool Call Limit -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+              <div class="form-group">
+                <label>Reasoning Effort</label>
+                <select id="edit-reasoning-effort-${agent.id}">
+                  <option value="" ${!agent.reasoning_effort?'selected':''}>Default</option>
+                  <option value="low" ${agent.reasoning_effort==='low'?'selected':''}>Low</option>
+                  <option value="medium" ${agent.reasoning_effort==='medium'?'selected':''}>Medium</option>
+                  <option value="high" ${agent.reasoning_effort==='high'?'selected':''}>High</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Tool Call Limit</label>
+                <input type="number" id="edit-tool-call-limit-${agent.id}" min="1" value="${agent.tool_call_limit??''}" placeholder="Default (5)">
+              </div>
+            </div>
+            <!-- Row: Thinking Budget + Max Instances -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+              <div class="form-group">
+                <label>Thinking Budget <span style="color:var(--muted);font-weight:normal;">(tokens)</span></label>
+                <input type="number" id="edit-thinking-budget-${agent.id}" min="1" value="${agent.thinking_budget??''}" placeholder="None">
+              </div>
+              <div class="form-group">
+                <label>Max Concurrent Instances</label>
+                <input type="number" id="edit-max-instances-${agent.id}" min="1" value="${agent.max_instances ?? ''}" placeholder="Unlimited">
+              </div>
+            </div>
+            <!-- Full: Capabilities -->
+            <div class="form-group">
+              <label style="margin-bottom:6px;">Capabilities</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reflection-${agent.id}" ${agent.reflection?'checked':''}> Reflection</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-thinking-tool-${agent.id}" ${agent.enable_thinking_tool?'checked':''}> Thinking Tool</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reasoning-tool-${agent.id}" ${agent.enable_reasoning_tool?'checked':''}> Reasoning Tool</label>
+              </div>
+            </div>
+            <!-- Full: System Prompt -->
+            <div class="form-group">
+              <label>System Prompt</label>
+              <textarea id="edit-prompt-${agent.id}" style="min-height:80px;">${escHtml(agent.system_prompt || '')}</textarea>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" onclick="saveAgentConfig(${agent.id})">Save Config</button>
             </div>
           </div>
-          <div class="btn-row">
-            <button class="btn btn-primary btn-sm" onclick="saveAgentConfig(${agent.id})">Save Config</button>
+          <div id="json-editor-${agent.id}" style="display:none;">
+            <div class="form-group">
+              <textarea id="json-textarea-${agent.id}" style="min-height:160px;font-family:'SF Mono',Menlo,monospace;font-size:12px;line-height:1.6;"></textarea>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" onclick="saveJsonConfig(${agent.id})">Save JSON</button>
+              <button class="btn btn-ghost btn-sm" onclick="toggleJsonEditor(${agent.id})">Cancel</button>
+            </div>
           </div>
+          <div id="edit-msg-${agent.id}"></div>
         </div>
-        <div id="json-editor-${agent.id}" style="display:none;">
+
+        <!-- Run tab -->
+        <div id="detail-tab-run-${agent.id}" class="detail-tab-pane">
           <div class="form-group">
-            <textarea id="json-textarea-${agent.id}" style="min-height:160px;font-family:'SF Mono',Menlo,monospace;font-size:12px;line-height:1.6;"></textarea>
+            <textarea id="run-task-${agent.id}" placeholder="Describe what you want the agent to do…" style="min-height:100px;"></textarea>
           </div>
           <div class="btn-row">
-            <button class="btn btn-primary btn-sm" onclick="saveJsonConfig(${agent.id})">Save JSON</button>
-            <button class="btn btn-ghost btn-sm" onclick="toggleJsonEditor(${agent.id})">Cancel</button>
+            <button class="btn btn-primary" id="run-btn-${agent.id}" onclick="runTask(${agent.id})">▶ Run</button>
+            <button class="btn btn-danger btn-sm" id="stop-btn-${agent.id}" onclick="stopTask(${agent.id})" style="display:none;">■ Stop</button>
           </div>
+          <div id="run-result-${agent.id}"></div>
         </div>
-        <div id="edit-msg-${agent.id}"></div>
 
-        <div class="section-title" style="margin-top:24px;">Stats</div>
-        <div id="stats-${agent.id}"><em style="color:var(--muted);">Loading…</em></div>
-
-        <div class="section-title" style="margin-top:24px;">Run a Task</div>
-        <div class="form-group">
-          <textarea id="run-task-${agent.id}" placeholder="Describe what you want the agent to do…" style="min-height:80px;"></textarea>
+        <!-- History tab -->
+        <div id="detail-tab-history-${agent.id}" class="detail-tab-pane">
+          <div class="section-title" style="margin-top:0;">Stats</div>
+          <div id="stats-${agent.id}"><em style="color:var(--muted);">Loading…</em></div>
+          <div class="section-title" style="margin-top:24px;">Run History</div>
+          <div id="agent-runs-${agent.id}"><em style="color:var(--muted);">Loading…</em></div>
         </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="run-btn-${agent.id}" onclick="runTask(${agent.id})">▶ Run</button>
-          <button class="btn btn-danger btn-sm" id="stop-btn-${agent.id}" onclick="stopTask(${agent.id})" style="display:none;">■ Stop</button>
-        </div>
-        <div id="run-result-${agent.id}"></div>
-
-        <div class="section-title" style="margin-top:24px;">Run History</div>
-        <div id="agent-runs-${agent.id}"><em style="color:var(--muted);">Loading…</em></div>
 
       </div>
     </div>
   `;
+  panel.querySelectorAll(`#form-editor-${agent.id} textarea`).forEach(ta => {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
+  });
   loadAgentStats(agent.id);
   loadAgentRuns(agent.id);
 }
@@ -1597,6 +1667,29 @@ async function exportAgents() {
 async function exportSettings() {
   const settings = await api('/api/settings');
   _downloadJson(settings, 'dashboard-config.json');
+}
+
+async function importSettings(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  const msgEl = document.getElementById('settings-msg');
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }),
+    });
+    await loadSettings();
+    msgEl.textContent = 'Config imported successfully!';
+    msgEl.className = 'success-msg';
+    setTimeout(() => { msgEl.textContent = ''; }, 3000);
+  } catch(e) {
+    msgEl.textContent = 'Import failed: ' + e.message;
+    msgEl.className = 'error-msg';
+  }
 }
 
 function _downloadJson(data, filename) {

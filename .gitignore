@@ -9,3 +9,4 @@ dashboard.log
 .claude/
 .idea/
 workspaces/
+teams/*.json
