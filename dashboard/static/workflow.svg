@@ -18,7 +18,7 @@
   <rect width="960" height="1080" fill="#0f1117"/>
 
   <!-- Title -->
-  <text x="480" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#7c6dfa">Upsonic Agent Workflow</text>
+  <text x="480" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#7c6dfa">Dev Team Agent Workflow</text>
 
   <!-- ── SWIMLANE HEADERS ── -->
   <!-- Lane: You -->

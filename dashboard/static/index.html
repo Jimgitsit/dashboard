@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%237c6dfa'/><polygon points='19,3 10,18 16,18 13,29 22,14 16,14' fill='white'/></svg>">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script>marked.use({ breaks: true });</script>
 <style>
   :root {
     --bg: #0f1117;
@@ -28,7 +29,7 @@
   .header { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
   .header h1 { font-size: 18px; font-weight: 700; color: var(--accent); }
   .header .subtitle { color: var(--muted); font-size: 12px; }
-  .tabs { display: flex; gap: 2px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .tabs { display: flex; gap: 2px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 200; }
   .tab-btn { padding: 12px 20px; cursor: pointer; background: none; border: none; color: var(--muted); font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.15s; }
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -57,6 +58,22 @@
   td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--surface2); }
+  .run-row { cursor: pointer; user-select: none; }
+  .run-chevron { display: inline-block; font-size: 10px; color: var(--muted); transition: transform 0.2s; margin-right: 6px; }
+  .run-chevron.open { transform: rotate(90deg); }
+  .run-expand-row td { padding: 0 !important; background: #0d0f1a !important; border-bottom: 1px solid var(--border); }
+  .run-expand-inner { overflow: hidden; max-height: 0; transition: max-height 0.25s ease; }
+  .run-expand-inner.open { max-height: 600px; }
+  .run-expand-content { padding: 14px 20px; font-size: 13px; color: var(--text); line-height: 1.7; }
+  .run-expand-content p { margin: 0 0 8px; }
+  .run-expand-content p:last-child { margin-bottom: 0; }
+  .run-expand-content strong { color: #e2e8f0; font-weight: 600; }
+  .run-expand-content ul, .run-expand-content ol { margin: 0 0 8px 20px; }
+  .run-expand-content li { margin-bottom: 3px; }
+  .run-expand-content code { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; background: var(--surface2); padding: 1px 5px; border-radius: 3px; }
+  .run-expand-content pre { background: #0a0c14; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; overflow-x: auto; margin: 0 0 8px; }
+  .run-expand-content pre code { background: none; padding: 0; font-size: 11px; color: #c8d3e6; }
+  .run-expand-content h1, .run-expand-content h2, .run-expand-content h3 { color: var(--text); font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
   .badge-success { background: rgba(74,222,128,0.15); color: var(--success); }
   .badge-error { background: rgba(248,113,113,0.15); color: var(--danger); }
@@ -230,7 +247,10 @@
     <div class="subtitle">Metrics &amp; Agent Manager</div>
   </div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
-    <span id="last-refresh" class="refresh-note">–</span>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;">
+      <span id="last-refresh" class="refresh-note">–</span>
+      <span id="next-refresh" class="refresh-note" style="font-size:10px;">–</span>
+    </div>
     <button class="btn btn-ghost btn-sm" onclick="refreshMetrics()">↻ Refresh</button>
     <button class="btn btn-sm" id="restart-btn" onclick="openRestartModal()" style="background:rgba(248,113,113,0.12);color:var(--danger);border:1px solid rgba(248,113,113,0.3);" title="Restart Server">⟳ Restart Server</button>
     <button class="btn btn-ghost btn-sm" onclick="showSettingsTab(this)" title="Settings">
@@ -653,6 +673,7 @@ async function refreshMetrics() {
     renderAgentChart(perf);
     renderRunsTable(runs.rows);
     document.getElementById('last-refresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+    _nextRefreshIn = 30;
   } catch(e) {
     console.error('Refresh error:', e);
   }
@@ -700,7 +721,7 @@ function renderTrendChart(rows) {
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      animation: false, responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: { legend: { labels: { color: '#8892a4', font: { size: 11 } } } },
       scales: {
@@ -745,7 +766,7 @@ function renderAgentChart(rows) {
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      animation: false, responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { color: '#8892a4', font: { size: 11 } } } },
       scales: {
         x: { ticks: { color: '#8892a4', font: { size: 10 } }, grid: { color: '#2d3250' } },
@@ -758,29 +779,49 @@ function renderAgentChart(rows) {
 
 function renderRunsTable(rows) {
   const tbody = document.getElementById('runs-tbody');
+  const openIds = new Set([...tbody.querySelectorAll('.run-expand-inner.open')].map(el => el.id));
   if (!rows.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.map(r => {
+  tbody.innerHTML = rows.map((r, i) => {
     if (r.agent_id && r.task_description) _runTaskMap.set(r.id, { agentId: r.agent_id, task: r.task_description, fromTable: true });
+    const expandId = `rex-m-${r.id ?? i}`;
+    const output = r.output_text || '_No output recorded._';
     return `
-    <tr>
-      <td class="mono" style="white-space:nowrap;font-size:11px;">${fmtTime(r.recorded_at)}</td>
+    <tr class="run-row" onclick="toggleRunRow(this, '${expandId}')">
+      <td class="mono" style="white-space:nowrap;font-size:11px;"><span class="run-chevron">▶</span>${fmtTime(r.recorded_at)}</td>
       <td>${r.agent_name || '–'}</td>
       <td class="mono" style="font-size:11px;">${r.model_name || '–'}</td>
       <td><div class="truncate" title="${escHtml(r.task_description||'')}">${escHtml(r.task_description || '–')}</div></td>
       <td>${statusBadge(r.status)}</td>
       <td>${fmt((r.input_tokens||0)+(r.output_tokens||0))}</td>
       <td>${fmtCost(r.cost_usd)}</td>
-      <td style="white-space:nowrap;">
+      <td style="white-space:nowrap;" onclick="event.stopPropagation()">
         ${r.status === 'RUNNING'
           ? `<span class="running-elapsed" data-started="${r.recorded_at}">…</span>
              ${r.agent_id ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;color:var(--error);" onclick="cancelRunFromTable(${r.agent_id}, this)">■</button>` : ''}`
           : `${fmtDur(r.duration_s)}${r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;" onclick="rerunFromRunId(${r.id})" title="Re-run">↻</button>` : ''}`}
       </td>
     </tr>
+    <tr class="run-expand-row"><td colspan="8"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
   `}).join('');
+  openIds.forEach(id => {
+    const inner = document.getElementById(id);
+    if (!inner) return;
+    inner.classList.add('open');
+    const expandRow = inner.closest('tr');
+    if (expandRow?.previousElementSibling) {
+      expandRow.previousElementSibling.querySelector('.run-chevron')?.classList.add('open');
+    }
+  });
+}
+
+function toggleRunRow(tr, expandId) {
+  const inner = document.getElementById(expandId);
+  const chevron = tr.querySelector('.run-chevron');
+  inner.classList.toggle('open');
+  chevron.classList.toggle('open');
 }
 
 async function rerunFromTable(agentId, taskDescription) {
@@ -823,6 +864,13 @@ function tickRunningElapsed() {
   });
 }
 setInterval(tickRunningElapsed, 1000);
+
+let _nextRefreshIn = 30;
+setInterval(() => {
+  _nextRefreshIn = Math.max(0, _nextRefreshIn - 1);
+  const el = document.getElementById('next-refresh');
+  if (el) el.textContent = `Next refresh in ${_nextRefreshIn}s`;
+}, 1000);
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1088,19 +1136,21 @@ async function loadAgentRuns(id) {
             <th>Time</th><th>Task</th><th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
           </tr></thead>
           <tbody>
-            ${data.rows.map(r => {
+            ${data.rows.map((r, i) => {
               if (r.task_description) _runTaskMap.set(r.id, { agentId: id, task: r.task_description, fromTable: false });
+              const expandId = `rex-a-${r.id ?? i}`;
+              const output = r.output_text || '_No output recorded._';
               return `
-              <tr>
-                <td class="mono" style="font-size:11px;white-space:nowrap;">${fmtTime(r.recorded_at)}</td>
+              <tr class="run-row" onclick="toggleRunRow(this, '${expandId}')">
+                <td class="mono" style="font-size:11px;white-space:nowrap;"><span class="run-chevron">▶</span>${fmtTime(r.recorded_at)}</td>
                 <td><div class="truncate" title="${escHtml(r.task_description||'')}">${escHtml(r.task_description||'–')}</div></td>
                 <td>${statusBadge(r.status)}</td>
                 <td>${fmt((r.input_tokens||0)+(r.output_tokens||0))}</td>
                 <td>${fmtCost(r.cost_usd)}</td>
                 <td>${fmtDur(r.duration_s)}</td>
-                <td>${r.task_description ? `<button class="btn btn-ghost btn-sm" onclick="rerunFromRunId(${r.id})" title="Re-run this task">↻</button>` : ''}</td>
+                <td onclick="event.stopPropagation()">${r.task_description ? `<button class="btn btn-ghost btn-sm" onclick="rerunFromRunId(${r.id})" title="Re-run this task">↻</button>` : ''}</td>
               </tr>
-              ${r.output_text ? `<tr><td colspan="7" style="padding:0 0 8px 0;"><pre style="margin:0;padding:8px 10px;background:#0a0c14;border:1px solid var(--border);border-radius:6px;font-size:10px;color:#e07070;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow-y:auto;">${escHtml(r.output_text)}</pre></td></tr>` : ''}
+              <tr class="run-expand-row"><td colspan="7"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
             `}).join('')}
           </tbody>
         </table>

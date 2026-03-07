@@ -324,7 +324,7 @@ def runs(limit: int = 50, offset: int = 0):
         rows = conn.execute("""
             SELECT r.id, r.run_id, r.recorded_at, r.agent_name, r.model_name, r.task_description,
                    r.status, r.input_tokens, r.output_tokens, r.cost_usd, r.duration_s,
-                   r.llm_requests, r.tool_calls,
+                   r.llm_requests, r.tool_calls, r.output_text,
                    a.id AS agent_id
             FROM runs r
             LEFT JOIN agents a ON a.name = r.agent_name

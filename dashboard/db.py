@@ -4,7 +4,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "dashboard.db"
+DB_PATH = Path(__file__).parent.parent / "data" / "dashboard.db"
 
 
 @contextmanager

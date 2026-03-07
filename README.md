@@ -6,10 +6,11 @@ The last dashboard you'll ever need. A web dashboard for managing and orchestrat
 
 ## Features
 
-- **Agent management** — create and configure agents with model selection, tools, roles, goals, and instructions
+- **Agent management** — create, configure, and organize agents with model selection, tools, roles, goals, and instructions
+- **Import / export** — export agents or settings to JSON and re-import them on any instance
 - **Multi-agent orchestration** — a Project Manager agent can spawn specialized sub-agents (Architect, Developer, Code Reviewer, Tester, DevOps) via the `SpawnAgents` tool
 - **Tool integrations** — GitHub, Jira, Trello (via MCP), web search, and code execution
-- **Run history** — full log of every task run with token usage, cost, duration, and output
+- **Run history** — expandable log of every task run with token usage, cost, duration, and markdown-rendered output
 - **Metrics** — token and cost charts by day and by model, per-agent performance stats
 - **Scheduled polling** — the Project Manager can be configured to check Trello on a timer and take autonomous workflow actions
 - **Streaming execution** — run any agent from the UI with live heartbeat feedback
@@ -18,19 +19,19 @@ The last dashboard you'll ever need. A web dashboard for managing and orchestrat
 
 **Metrics** — token and cost charts, per-agent performance stats
 
-![Metrics view](dashb-metrics.png)
+![Metrics view](screenshots/metrics.png)
 
 **Agents** — configure model, tools, system prompt, and agent type
 
-![Agents view](dashb-agents.png)
+![Agents view](screenshots/agents.png)
 
 **New Project** — upload a markdown design doc to kick off the full workflow
 
-![New Project view](dashb-newproject.png)
+![New Project view](screenshots/newproject.png)
 
 **Workflow** — visual diagram of the multi-agent coordination flow
 
-![Workflow diagram](dashb-workflow.png)
+![Workflow diagram](screenshots/workflow.png)
 
 ## Stack
 
@@ -128,17 +129,20 @@ dashboard/
 ├── run.py          # Uvicorn entrypoint
 ├── tracker.py      # Records run results to the database
 └── static/
-    └── index.html  # Single-file SPA
+    ├── index.html  # Single-file SPA
+    └── workflow.svg
+data/
+└── sample.db       # Sample SQLite database with mock data
 teams/
-└── dev-team.py     # Script to seed the default workflow agent team
-workflow.svg        # Diagram of the multi-agent workflow
+└── sample-dev-team.json  # Importable dev team agent definitions
+screenshots/        # UI screenshots for the README
 ```
 
 ## Workflow agents
 
-Agent teams are defined in the `teams/` folder. Each script seeds a named team into the dashboard.
+Agent teams are defined as JSON files in the `teams/` folder and can be imported via the **↑ Import Agents** button on the Agents tab.
 
-### Dev team (`teams/dev-team.py`)
+### Dev team (`teams/sample-dev-team.json`)
 
 A ready-to-use software development team:
 
@@ -152,9 +156,3 @@ A ready-to-use software development team:
 | Tester | Validates implementations and merges approved PRs |
 | Assistant | General-purpose ad-hoc queries |
 | Designer | UI/UX design guidance |
-
-Run it against a live dashboard to create or update all agents:
-
-```bash
-python teams/dev-team.py
-```
