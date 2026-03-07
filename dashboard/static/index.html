@@ -267,6 +267,9 @@
   <div class="agents-layout">
     <!-- Left column: list + new form -->
     <div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button class="btn btn-ghost btn-sm" onclick="exportAgents()">↓ Export Agents</button>
+      </div>
       <div class="new-agent-card" style="margin-bottom:16px;">
         <h3 onclick="toggleNewAgent()">
           <span>+ New Agent</span>
@@ -459,6 +462,7 @@
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+      <button class="btn btn-ghost" onclick="exportSettings()">↓ Export Config</button>
     </div>
     <div id="settings-msg" style="margin-top:8px;font-size:12px;"></div>
   </div>
@@ -483,6 +487,7 @@ function showTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   else if (event && event.target) event.target.classList.add('active');
+  localStorage.setItem('activeTab', name);
   if (name === 'metrics') refreshMetrics();
   if (name === 'agents') loadAgents();
 }
@@ -491,6 +496,8 @@ async function showSettingsTab(btn) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-settings').classList.add('active');
+  if (btn) btn.classList.add('active');
+  localStorage.setItem('activeTab', 'settings');
   await loadSettings();
 }
 
@@ -1575,9 +1582,42 @@ document.getElementById('restart-modal').addEventListener('click', function(e) {
 });
 
 // ============================================================
+// ============================================================
+// Export helpers
+// ============================================================
+async function exportAgents() {
+  const agents = await api('/api/agents');
+  const exportable = agents.map(a => {
+    const { id, created_at, updated_at, run_count, last_run, agent_id, ...rest } = a;
+    return rest;
+  });
+  _downloadJson(exportable, 'agents.json');
+}
+
+async function exportSettings() {
+  const settings = await api('/api/settings');
+  _downloadJson(settings, 'dashboard-config.json');
+}
+
+function _downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Init + Auto-refresh
 // ============================================================
-refreshMetrics();
+(function restoreTab() {
+  const saved = localStorage.getItem('activeTab');
+  if (saved && saved !== 'metrics') {
+    if (saved === 'settings') { const btn = document.querySelector('.tab-btn[onclick*="showSettingsTab"]'); showSettingsTab(btn); return; }
+    const btn = document.querySelector(`.tab-btn[onclick*="'${saved}'"]`);
+    if (btn) { showTab(saved, btn); return; }
+  }
+  refreshMetrics();
+})();
 setInterval(refreshMetrics, 30000);
 </script>
 </body>
