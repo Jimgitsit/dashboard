@@ -376,7 +376,9 @@
       <div id="agent-list" class="agent-list">
         <div class="empty">Loading…</div>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-agents-file').click()">↑ Import Agents</button>
+        <input type="file" id="import-agents-file" accept=".json" style="display:none;" onchange="importAgents(this)">
         <button class="btn btn-ghost btn-sm" onclick="exportAgents()">↓ Export Agents</button>
       </div>
     </div>
@@ -1744,6 +1746,37 @@ async function exportAgents() {
     return rest;
   });
   _downloadJson(exportable, 'agents.json');
+}
+
+async function importAgents(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const agents = JSON.parse(text);
+    if (!Array.isArray(agents)) throw new Error('File must contain a JSON array of agents');
+    let created = 0, skipped = 0;
+    for (const agent of agents) {
+      // tools is stored as a JSON string in the DB/export but the API expects an array
+      if (typeof agent.tools === 'string') try { agent.tools = JSON.parse(agent.tools); } catch(e) {}
+      try {
+        await api('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(agent),
+        });
+        created++;
+      } catch(e) {
+        if (e.message && e.message.includes('409')) skipped++;
+        else throw e;
+      }
+    }
+    await loadAgents();
+    alert(`Imported ${created} agent(s)` + (skipped ? `, ${skipped} skipped (already exist)` : ''));
+  } catch(e) {
+    alert('Import failed: ' + e.message);
+  }
 }
 
 async function exportSettings() {
