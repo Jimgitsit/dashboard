@@ -12,3 +12,4 @@ teams/*
 data/*
 !data/.gitkeep
 !data/sample.db
+plans

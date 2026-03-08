@@ -91,6 +91,12 @@ def init_db() -> None:
             conn.execute("ALTER TABLE agents ADD COLUMN thinking_budget INTEGER")
         if "tool_call_limit" not in cols:
             conn.execute("ALTER TABLE agents ADD COLUMN tool_call_limit INTEGER")
+        if "context_management" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN context_management INTEGER DEFAULT 0")
+        if "context_management_keep_recent" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN context_management_keep_recent INTEGER")
+        if "context_management_model" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN context_management_model TEXT")
         # Runs table migrations
         run_cols = [r[1] for r in conn.execute("PRAGMA table_info(runs)").fetchall()]
         if "workspace" not in run_cols:

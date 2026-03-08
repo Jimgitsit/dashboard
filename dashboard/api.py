@@ -428,6 +428,9 @@ class AgentCreate(BaseModel):
     reasoning_effort: Optional[str] = None
     thinking_budget: Optional[int] = None
     tool_call_limit: Optional[int] = None
+    context_management: Optional[bool] = None
+    context_management_keep_recent: Optional[int] = None
+    context_management_model: Optional[str] = None
 
 
 class AgentUpdate(BaseModel):
@@ -450,6 +453,9 @@ class AgentUpdate(BaseModel):
     reasoning_effort: Optional[str] = None
     thinking_budget: Optional[int] = None
     tool_call_limit: Optional[int] = None
+    context_management: Optional[bool] = None
+    context_management_keep_recent: Optional[int] = None
+    context_management_model: Optional[str] = None
 
 
 class RunTaskRequest(BaseModel):
@@ -469,6 +475,7 @@ def list_agents():
                    a.role, a.goal, a.instructions, a.education, a.work_experience,
                    a.reflection, a.enable_thinking_tool, a.enable_reasoning_tool,
                    a.reasoning_effort, a.thinking_budget, a.tool_call_limit,
+                   a.context_management, a.context_management_keep_recent, a.context_management_model,
                    COUNT(r.id) AS run_count,
                    MAX(r.recorded_at) AS last_run
             FROM agents a
@@ -487,15 +494,18 @@ def create_agent(body: AgentCreate):
         with get_conn() as conn:
             cur = conn.execute(
                 "INSERT INTO agents (name, model, system_prompt, tools, agent_type, workspace, max_instances, enabled, created_at, updated_at, "
-                "role, goal, instructions, education, work_experience, reflection, enable_thinking_tool, enable_reasoning_tool, reasoning_effort, thinking_budget, tool_call_limit) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "role, goal, instructions, education, work_experience, reflection, enable_thinking_tool, enable_reasoning_tool, reasoning_effort, thinking_budget, tool_call_limit, "
+                "context_management, context_management_keep_recent, context_management_model) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (body.name, body.model, body.system_prompt, tools_json,
                  body.agent_type, body.workspace or None, body.max_instances, now, now,
                  body.role, body.goal, body.instructions, body.education, body.work_experience,
                  int(body.reflection) if body.reflection is not None else None,
                  int(body.enable_thinking_tool) if body.enable_thinking_tool is not None else None,
                  int(body.enable_reasoning_tool) if body.enable_reasoning_tool is not None else None,
-                 body.reasoning_effort, body.thinking_budget, body.tool_call_limit),
+                 body.reasoning_effort, body.thinking_budget, body.tool_call_limit,
+                 int(body.context_management) if body.context_management is not None else None,
+                 body.context_management_keep_recent, body.context_management_model),
             )
             agent_id = cur.lastrowid
         with get_conn() as conn:
@@ -549,6 +559,12 @@ def update_agent(agent_id: int, body: AgentUpdate):
         fields["thinking_budget"] = body.thinking_budget
     if "tool_call_limit" in _fields_set:
         fields["tool_call_limit"] = body.tool_call_limit
+    if body.context_management is not None:
+        fields["context_management"] = int(body.context_management)
+    if "context_management_keep_recent" in _fields_set:
+        fields["context_management_keep_recent"] = body.context_management_keep_recent
+    if "context_management_model" in _fields_set:
+        fields["context_management_model"] = body.context_management_model
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -668,6 +684,12 @@ def _instantiate_agent(cfg: dict, tools: list):
         kwargs["thinking_budget"] = cfg["thinking_budget"]
     if cfg.get("tool_call_limit") is not None:
         kwargs["tool_call_limit"] = cfg["tool_call_limit"]
+    if cfg.get("context_management"):
+        kwargs["context_management"] = True
+    if cfg.get("context_management_keep_recent") is not None:
+        kwargs["context_management_keep_recent"] = cfg["context_management_keep_recent"]
+    if cfg.get("context_management_model"):
+        kwargs["context_management_model"] = cfg["context_management_model"]
     model = cfg["model"]
     if agent_type == "autonomous":
         from upsonic import AutonomousAgent  # type: ignore

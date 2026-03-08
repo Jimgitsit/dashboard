@@ -4,7 +4,7 @@
     "model": "claude-sonnet-4-6",
     "system_prompt": null,
     "tools": "[\"WebSearchTool\", \"Trello\"]",
-    "agent_type": "autonomous",
+    "agent_type": "standard",
     "workspace": null,
     "max_instances": 1,
     "enabled": 1,
@@ -15,14 +15,17 @@
     "work_experience": null,
     "reflection": 1,
     "enable_thinking_tool": 1,
-    "enable_reasoning_tool": 1,
+    "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 20
+    "tool_call_limit": 20,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "Assistant",
-    "model": "claude-sonnet-4-6",
+    "model": "claude-haiku-4-5-20251001",
     "system_prompt": null,
     "tools": "[\"WebSearchTool\", \"CodeExecutionTool\", \"GitHub\", \"Trello\"]",
     "agent_type": "standard",
@@ -35,18 +38,21 @@
     "education": null,
     "work_experience": null,
     "reflection": 1,
-    "enable_thinking_tool": 1,
-    "enable_reasoning_tool": 1,
+    "enable_thinking_tool": 0,
+    "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 5
+    "tool_call_limit": 5,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "Code Reviewer",
     "model": "claude-sonnet-4-6",
     "system_prompt": null,
     "tools": "[\"WebSearchTool\", \"GitHub\", \"Trello\"]",
-    "agent_type": "autonomous",
+    "agent_type": "standard",
     "workspace": null,
     "max_instances": 1,
     "enabled": 1,
@@ -56,15 +62,18 @@
     "education": null,
     "work_experience": null,
     "reflection": 1,
-    "enable_thinking_tool": 1,
-    "enable_reasoning_tool": 1,
+    "enable_thinking_tool": 0,
+    "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 40
+    "tool_call_limit": 40,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "Designer",
-    "model": "claude-sonnet-4-6",
+    "model": "claude-haiku-4-5-20251001",
     "system_prompt": null,
     "tools": "[\"WebSearchTool\", \"GitHub\", \"Trello\"]",
     "agent_type": "standard",
@@ -77,11 +86,14 @@
     "education": null,
     "work_experience": null,
     "reflection": 1,
-    "enable_thinking_tool": 1,
+    "enable_thinking_tool": 0,
     "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 5
+    "tool_call_limit": 5,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "DevOps",
@@ -102,7 +114,10 @@
     "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 30
+    "tool_call_limit": 30,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "Developer",
@@ -120,23 +135,26 @@
     "work_experience": null,
     "reflection": 1,
     "enable_thinking_tool": 1,
-    "enable_reasoning_tool": 1,
+    "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 100
+    "tool_call_limit": 100,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "Project Manager",
     "model": "claude-sonnet-4-6",
     "system_prompt": null,
-    "tools": "[\"WebSearchTool\", \"GitHub\", \"Trello\", \"SpawnAgents\"]",
-    "agent_type": "autonomous",
+    "tools": "[\"WebSearchTool\", \"CodeExecutionTool\", \"GitHub\", \"Trello\", \"SpawnAgents\"]",
+    "agent_type": "standard",
     "workspace": null,
     "max_instances": 1,
     "enabled": 1,
     "role": "Software development project coordinator",
     "goal": "Ensure all projects move smoothly from design to delivery by coordinating agents and tracking progress via Trello.",
-    "instructions": "You coordinate a software development team. You operate in two modes.\n\nIMPORTANT: You are a fully autonomous agent. Never ask for permission or confirmation. Never announce what you\nare about to do — just do it. Your response must only describe actions you have already taken, never actions\nyou are planning or considering. Do not use future tense (\"I will\", \"I'm going to\", \"I can\"). Use past tense\n(\"I spawned\", \"I created\", \"I moved\"). If you catch yourself about to ask a question or seek approval, stop\nand take the action instead. Asking a human what to do is a failure.\n\n## New Project Mode\nWhen given a design document, do ALL of the following:\n1. Create a new Trello board named after the project.\n2. Create a card titled \"[Project Name] - Design Document\" with the full design doc in the description. Add a \"Design Doc\" label.\n3. Spawn the Architect agent with the board ID, card ID, and full design document for technical review.\n4. Spawn the DevOps agent with the project name and board ID to create the GitHub repo.\n5. Create the following lists on the board in order: Backlog, To Do, In Progress, In Review, Done.\n\nAfter completing the above, move on — do not wait or ask. Your next action will come during Polling Mode.\n\n## Polling Mode (scheduled checks)\nInspect every card on every project board. For each card, look for new comments, list changes,\ndescription updates, and unanswered questions. Then take the appropriate action immediately:\n\n**Design doc card with a human green-light comment:**\nRead the design doc, the Architect's analysis, and all comments. Break the work into discrete\ntask cards — one card per feature or component. Add each to the \"Backlog\" list. Each card must\ninclude a clear description and explicit acceptance criteria.\n\n**Card with an @PM comment (e.g. \"@PM Ready for dev\", \"@PM proceed\", \"@PM unblocked\"):**\nTreat this as an explicit instruction. Read the comment, understand what is being asked,\nand take the appropriate action immediately. For \"Ready for dev\" or similar, spawn the\nDeveloper agent with the full card details, the repo name, and any Architect notes.\n\n**Task card in \"Backlog\" or \"To Do\" with no developer working on it:**\nSpawn the Developer directly unless the card involves significant architectural decisions, new infrastructure,\nor complex system design with no Architect notes yet — in those cases spawn the Architect first.\nSimple tasks (UI tweaks, bug fixes, small features) go straight to the Developer. Do not ask — just pick and act.\n\n**Task card in \"In Review\" (has a PR link, awaiting code review):**\nSpawn the Code Reviewer with the PR URL, repo name, and card details.\n\n**Task card where Code Reviewer has approved (look for approval comment):**\nSpawn the Tester with the PR URL, repo name, and card details.\n\n**Card with a technical question or ambiguity:**\nSpawn the Architect to answer it. Post the answer back on the card.\n\n**Card blocked on a human decision:**\nLeave a clear comment on the card describing exactly what decision is needed.\nDo not leave the card in this state once a human has responded — act on their response.\n\n**Card in \"Done\":**\nCall `cleanup_workspace` with the card's URL to delete its local workspace directory.\nThis is safe to call even if the workspace was already cleaned up.\n\nDo not spawn an agent for a card that already has a pending action in progress.\nSummarize every board checked, every card acted on, and what action was taken.",
+    "instructions": "You coordinate a software development team. Act autonomously — never ask permission, never announce intent. Report only actions already taken, in past tense.\n\n## New Project Mode\nGiven a design document:\n1. Create a Trello board named after the project.\n2. Create a \"Design Document\" card with the full doc in the description. Add a \"Design Doc\" label.\n3. Spawn Architect with board ID, card ID, and design doc for review.\n4. Spawn DevOps with project name and board ID to create the GitHub repo.\n5. Create lists: Backlog, To Do, In Progress, In Review, Done.\n\n## Polling Mode\nInspect every card on every project board. Act on each based on its state:\n\n- **Design doc with human green-light**: Break into task cards with descriptions and acceptance criteria. Add to Backlog.\n- **@PM comment**: Treat as an instruction. Act immediately (e.g. spawn Developer for \"ready for dev\").\n- **Backlog/To Do, unassigned**: Spawn Developer (or Architect first if architecturally complex).\n- **In Review with PR link**: Spawn Code Reviewer.\n- **Code Reviewer approved**: Spawn Tester.\n- **Technical question**: Spawn Architect.\n- **Blocked on human**: Comment with what decision is needed. Act on any human response.\n- **Done**: Call cleanup_workspace with the card URL.\n\nDo not spawn an agent for a card with a pending action. Summarize all boards checked and actions taken.",
     "education": null,
     "work_experience": null,
     "reflection": 1,
@@ -144,14 +162,17 @@
     "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 60
+    "tool_call_limit": 60,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   },
   {
     "name": "Tester",
-    "model": "claude-sonnet-4-6",
+    "model": "claude-haiku-4-5-20251001",
     "system_prompt": null,
     "tools": "[\"WebSearchTool\", \"CodeExecutionTool\", \"GitHub\", \"Trello\"]",
-    "agent_type": "autonomous",
+    "agent_type": "standard",
     "workspace": null,
     "max_instances": 1,
     "enabled": 1,
@@ -165,6 +186,9 @@
     "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 40
+    "tool_call_limit": 40,
+    "context_management": 1,
+    "context_management_keep_recent": null,
+    "context_management_model": null
   }
 ]

@@ -1051,6 +1051,29 @@ async function renderAgentDetail(agent) {
                 <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reasoning-tool-${agent.id}" ${agent.enable_reasoning_tool?'checked':''}> Reasoning Tool</label>
               </div>
             </div>
+            <!-- Full: Context Management -->
+            <div class="form-group">
+              <label style="margin-bottom:6px;">Context Management</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                <input type="checkbox" id="edit-context-management-${agent.id}" ${agent.context_management?'checked':''} onchange="document.getElementById('ctx-mgmt-opts-${agent.id}').style.display=this.checked?'':'none'"> Enable context window management
+              </label>
+              <div id="ctx-mgmt-opts-${agent.id}" style="display:${agent.context_management?'':'none'};margin-top:8px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                  <div class="form-group">
+                    <label>Keep Recent Messages</label>
+                    <input type="number" id="edit-context-management-keep-recent-${agent.id}" min="1" value="${agent.context_management_keep_recent??''}" placeholder="Default (5)">
+                  </div>
+                  <div class="form-group">
+                    <label>Compression Model</label>
+                    <select id="edit-context-management-model-${agent.id}">
+                      <option value="" ${!agent.context_management_model?'selected':''}>Same as agent</option>
+                      <option value="claude-haiku-4-5-20251001" ${agent.context_management_model==='claude-haiku-4-5-20251001'?'selected':''}>Haiku</option>
+                      <option value="claude-sonnet-4-6" ${agent.context_management_model==='claude-sonnet-4-6'?'selected':''}>Sonnet</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
             <!-- Full: System Prompt -->
             <div class="form-group">
               <label>System Prompt</label>
@@ -1211,12 +1234,16 @@ async function saveAgentConfig(id) {
   const reflection = document.getElementById(`edit-reflection-${id}`)?.checked ?? false;
   const enable_thinking_tool = document.getElementById(`edit-thinking-tool-${id}`)?.checked ?? false;
   const enable_reasoning_tool = document.getElementById(`edit-reasoning-tool-${id}`)?.checked ?? false;
+  const context_management = document.getElementById(`edit-context-management-${id}`)?.checked ?? false;
+  const cmkr_raw = document.getElementById(`edit-context-management-keep-recent-${id}`)?.value.trim();
+  const context_management_keep_recent = cmkr_raw ? parseInt(cmkr_raw) : null;
+  const context_management_model = document.getElementById(`edit-context-management-model-${id}`)?.value || null;
   const msgEl = document.getElementById(`edit-msg-${id}`);
   try {
     await api(`/api/agents/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system_prompt, tools, agent_type, max_instances, role, goal, instructions, education, work_experience, reasoning_effort, tool_call_limit, thinking_budget, reflection, enable_thinking_tool, enable_reasoning_tool }),
+      body: JSON.stringify({ model, system_prompt, tools, agent_type, max_instances, role, goal, instructions, education, work_experience, reasoning_effort, tool_call_limit, thinking_budget, reflection, enable_thinking_tool, enable_reasoning_tool, context_management, context_management_keep_recent, context_management_model }),
     });
     msgEl.textContent = 'Saved!';
     msgEl.className = 'success-msg';
@@ -1253,6 +1280,10 @@ function toggleJsonEditor(id) {
     const reflection = document.getElementById(`edit-reflection-${id}`)?.checked ?? false;
     const enable_thinking_tool = document.getElementById(`edit-thinking-tool-${id}`)?.checked ?? false;
     const enable_reasoning_tool = document.getElementById(`edit-reasoning-tool-${id}`)?.checked ?? false;
+    const context_management = document.getElementById(`edit-context-management-${id}`)?.checked ?? false;
+    const cmkr_raw = document.getElementById(`edit-context-management-keep-recent-${id}`)?.value.trim();
+    const context_management_keep_recent = cmkr_raw ? parseInt(cmkr_raw) : null;
+    const context_management_model = document.getElementById(`edit-context-management-model-${id}`)?.value || null;
     document.getElementById(`json-textarea-${id}`).value = JSON.stringify({
       name: agent ? agent.name : undefined,
       model,
@@ -1263,6 +1294,7 @@ function toggleJsonEditor(id) {
       role, goal, instructions, education, work_experience,
       reasoning_effort, tool_call_limit, thinking_budget,
       reflection, enable_thinking_tool, enable_reasoning_tool,
+      context_management, context_management_keep_recent, context_management_model,
       enabled: agent ? agent.enabled : undefined,
     }, null, 2);
     jsonDiv.style.display = '';
