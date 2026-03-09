@@ -97,6 +97,16 @@ def init_db() -> None:
             conn.execute("ALTER TABLE agents ADD COLUMN context_management_keep_recent INTEGER")
         if "context_management_model" not in cols:
             conn.execute("ALTER TABLE agents ADD COLUMN context_management_model TEXT")
+        if "memory_enabled" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN memory_enabled INTEGER DEFAULT 0")
+        if "schedule_enabled" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN schedule_enabled INTEGER DEFAULT 0")
+        if "schedule_interval" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN schedule_interval INTEGER")
+        if "schedule_unit" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN schedule_unit TEXT DEFAULT 'hours'")
+        if "schedule_last_run" not in cols:
+            conn.execute("ALTER TABLE agents ADD COLUMN schedule_last_run TEXT")
         # Runs table migrations
         run_cols = [r[1] for r in conn.execute("PRAGMA table_info(runs)").fetchall()]
         if "workspace" not in run_cols:

@@ -12,7 +12,7 @@ The last dashboard you'll ever need. A web dashboard for managing and orchestrat
 - **Tool integrations** — GitHub, Jira, Trello (via MCP), web search, and code execution
 - **Run history** — expandable log of every task run with token usage, cost, duration, and markdown-rendered output
 - **Metrics** — token and cost charts by day and by model, per-agent performance stats
-- **Scheduled polling** — the Project Manager can be configured to check Trello on a timer and take autonomous workflow actions
+- **Scheduled runs** — any agent can be configured to run on a recurring schedule (minutes, hours, or days) using its instructions as the task prompt
 - **Streaming execution** — run any agent from the UI with live heartbeat feedback
 
 ## Screenshots
@@ -45,8 +45,8 @@ The last dashboard you'll ever need. A web dashboard for managing and orchestrat
 ### Prerequisites
 
 - Python 3.11+
-- An [Anthropic API key](https://console.anthropic.com)
-- Upsonic installed in your environment
+- At least one model provider API key (see [Model Support](#model-support) below)
+- [Bun](https://bun.sh) (required for Trello MCP tool; optional otherwise)
 
 ### Install
 
@@ -58,15 +58,17 @@ source .venv/bin/activate
 pip install upsonic fastapi uvicorn python-dotenv
 ```
 
-### Configure
+### Model Support
 
-Create a `.env` file in the project root:
+Upsonic requires a provider package for each model family you want to use. Install the ones you need:
 
-```
-ANTHROPIC_API_KEY=your_key_here
-```
+| Provider | Models | Install |
+|---|---|---|
+| Anthropic | Claude Opus, Sonnet, Haiku | `pip install anthropic` |
+| OpenAI | GPT-4o, o1, o3 | `pip install openai` |
+| Google | Gemini 2.5 Pro/Flash | `pip install google-generativeai` |
 
-External tool credentials (GitHub, Jira, Trello) are configured from the Settings page in the UI after the server is running.
+At least one provider package is required. The dashboard ships with Anthropic models pre-configured.
 
 ### Run
 
@@ -128,6 +130,26 @@ launchctl unload ~/Library/LaunchAgents/local.upsonic.dashboard.plist && launchc
 
 ## Getting Started
 
+### Settings
+
+Before using agents, configure your API keys and tool credentials on the **Settings** page (gear icon in the top bar).
+
+**Model providers**
+
+Add at least one API key so agents can call an LLM:
+
+- **Anthropic API Key** — required for Claude models (Opus, Sonnet, Haiku)
+- **OpenAI API Key** — required for GPT / o-series models
+- **Google AI API Key** — required for Gemini models
+
+**Tool credentials** (optional)
+
+If your agents use MCP-based tools, provide the relevant credentials:
+
+- **GitHub** — MCP server URL + personal access token
+- **Jira** — MCP server URL + API token
+- **Trello** — API key + auth token (also requires [Bun](https://bun.sh) on the host)
+
 ### Creating or importing agents
 
 **Create a new agent:**
@@ -183,9 +205,21 @@ All configuration is on the **Config** tab. Fields are organized into sections:
     - Set **Keep Recent Messages** to control how many recent messages stay uncompressed (default 5).
     - Pick a **Compression Model** — "Same as agent" uses the agent's own model, or choose Haiku/Sonnet for cheaper/faster compression.
 
+**Memory**
+
+14. Check **Enable persistent memory across runs** to let the agent remember conversation history and summaries between runs. Memory is stored in `data/memory.db` and uses the agent's own model for summary generation. This adds extra token cost per run but lets the agent build context over time. Recommended for coordinators like the Project Manager.
+
+**Scheduled runs**
+
+15. Check **Enable scheduled runs** to have the agent run automatically on a recurring interval.
+    - Set the **Interval** and **Unit** (minutes, hours, or days).
+    - The agent's **Instructions** field is used as the task prompt for each scheduled run.
+    - Use the **Check Now** button to manually trigger a scheduled run at any time.
+    - A countdown timer appears on the agent list card showing when the next run is due.
+
 **System prompt**
 
-15. Optionally write a raw **System Prompt** that gets appended to the agent's context.
+16. Optionally write a raw **System Prompt** that gets appended to the agent's context.
 
 Click **Save Config** when done. You can also edit the full configuration as raw JSON via the **{ } JSON** button.
 

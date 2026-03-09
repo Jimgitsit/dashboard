@@ -114,102 +114,88 @@ _running_lock = threading.Lock()
 @app.on_event("startup")
 async def on_startup():
     init_db()
-    asyncio.create_task(_pm_watcher_loop())
+    # Mark any orphaned RUNNING rows from a previous server session as FAILED
+    with get_conn() as conn:
+        n = conn.execute("UPDATE runs SET status = 'FAILED' WHERE status = 'RUNNING'").rowcount
+        if n:
+            logger.info("Startup: marked %d orphaned RUNNING rows as FAILED", n)
+    asyncio.create_task(_schedule_watcher_loop())
 
 
-async def _pm_watcher_loop():
-    """Background task: periodically runs the Project Manager's Trello check."""
+async def _schedule_watcher_loop():
+    """Background task: checks all agents with schedule_enabled and runs them when due."""
     while True:
         try:
             with get_conn() as conn:
-                def _s(k, default=None):
-                    r = conn.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone()
-                    return r["value"] if r else default
+                rows = conn.execute(
+                    "SELECT * FROM agents WHERE schedule_enabled = 1 AND enabled = 1 AND schedule_interval IS NOT NULL"
+                ).fetchall()
 
-                enabled = _s("pm_poll_enabled", "0")
-                if enabled != "1":
-                    await asyncio.sleep(30)
-                    continue
+            for row in rows:
+                cfg = dict(row)
+                agent_id = cfg["id"]
+                interval = cfg["schedule_interval"]
+                unit = cfg.get("schedule_unit") or "hours"
+                last_run = cfg.get("schedule_last_run")
 
-                interval_min = int(_s("pm_poll_interval", "15"))
-                last_poll = _s("pm_last_poll", "")
+                multiplier = {"mins": 60, "hours": 3600, "days": 86400}.get(unit, 60)
+                interval_secs = interval * multiplier
 
-            # Check if enough time has passed
-            if last_poll:
-                last_dt = datetime.fromisoformat(last_poll)
-                elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
-                if elapsed < interval_min * 60:
-                    await asyncio.sleep(30)
-                    continue
+                if last_run:
+                    last_dt = datetime.fromisoformat(last_run)
+                    elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                    if elapsed < interval_secs:
+                        continue
 
-            logger.info("PM watcher: triggering scheduled Trello check")
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _run_pm_poll)
+                logger.info("Schedule watcher: triggering scheduled run for '%s'", cfg["name"])
+                # Update schedule_last_run NOW to prevent re-spawning while the run is in progress
+                now = datetime.now(timezone.utc).isoformat()
+                with get_conn() as conn2:
+                    conn2.execute("UPDATE agents SET schedule_last_run = ? WHERE id = ?", (now, agent_id))
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, _run_scheduled_agent, agent_id)
 
         except Exception:
-            logger.exception("PM watcher error")
-            await asyncio.sleep(60)
+            logger.exception("Schedule watcher error")
+
+        await asyncio.sleep(30)
 
 
-def _run_pm_poll():
-    """Synchronously run the Project Manager agent for a scheduled Trello check."""
+def _run_scheduled_agent(agent_id: int):
+    """Synchronously run a scheduled agent using its instructions as the task."""
     import time
-    try:
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM agents WHERE name = 'Project Manager' AND enabled = 1"
-            ).fetchone()
-            last_poll_row = conn.execute(
-                "SELECT value FROM settings WHERE key = 'pm_last_poll'"
-            ).fetchone()
-            last_poll = last_poll_row["value"] if last_poll_row else None
-        if row is None:
-            logger.warning("PM watcher: 'Project Manager' agent not found or disabled")
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM agents WHERE id = ? AND enabled = 1", (agent_id,)
+        ).fetchone()
+    if row is None:
+        logger.warning("Schedule watcher: agent %d not found or disabled", agent_id)
+        return
+
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from upsonic import Task  # type: ignore
+
+    cfg = dict(row)
+    task_text = cfg.get("instructions") or "Perform your scheduled task."
+
+    # Check concurrency limit (atomic check-and-increment)
+    max_inst = cfg.get("max_instances") or 1
+    with _running_lock:
+        if _running_counts.get(agent_id, 0) >= max_inst:
+            logger.info("Schedule watcher: agent '%s' at concurrency limit, skipping", cfg["name"])
             return
+        _running_counts[agent_id] = _running_counts.get(agent_id, 0) + 1
 
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-        from upsonic import Task  # type: ignore
-
-        cfg = dict(row)
-        agent_id = cfg["id"]
-
-        if last_poll:
-            scope = (
-                f"This is an incremental check. The previous check ran at {last_poll} (UTC ISO-8601). "
-                f"For each board, fetch board actions using since={last_poll} to get only activity "
-                f"since the last run. Extract the unique card IDs from those actions and inspect "
-                f"only those cards — skip cards with no activity since the last check. "
-                f"If the Trello tool does not support a since parameter on actions, fetch cards and "
-                f"filter by their dateLastActivity field, skipping any card whose dateLastActivity "
-                f"is older than {last_poll}."
-            )
-        else:
-            scope = "This is the first check — inspect all cards on all boards."
-
-        task_text = (
-            f"Scheduled Trello check. Only look at boards that belong to the Upsonic workspace. "
-            f"Ignore any boards outside that workspace. {scope}\n\n"
-            "For each card in scope, check for: new comments, list changes, description updates, "
-            "overdue or approaching due dates, and any unanswered questions. "
-            "Then take the appropriate workflow action:\n"
-            "- Design doc card with a human green-light comment → break into task cards in 'To Do'\n"
-            "- Task card in 'To Do' with no developer assigned → spawn Developer\n"
-            "- Task card in 'In Review' (PR opened, awaiting review) → spawn Code Reviewer\n"
-            "- Task card where Code Reviewer has approved → spawn Tester\n"
-            "- Card with a technical question → spawn Architect to answer it\n"
-            "- Card blocked on a human decision → leave a clear comment describing the blocker\n"
-            "Do not spawn an agent for a card that already has a pending action in progress. "
-            "Summarize every board you checked, every card you acted on, and what action you took."
+    temp_run_id = str(uuid.uuid4())
+    wall_start = time.monotonic()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status) VALUES (?, ?, ?, ?, ?)",
+            (temp_run_id, datetime.now(timezone.utc).isoformat(), cfg["name"], task_text, "RUNNING"),
         )
 
-        temp_run_id = str(uuid.uuid4())
-        wall_start = time.monotonic()
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status) VALUES (?, ?, ?, ?, ?)",
-                (temp_run_id, datetime.now(timezone.utc).isoformat(), cfg["name"], task_text, "RUNNING"),
-            )
-
+    succeeded = False
+    try:
         tools = _build_tools(cfg)
         tool_names = json.loads(cfg.get("tools") or "[]")
         if "SpawnAgents" in tool_names:
@@ -217,39 +203,31 @@ def _run_pm_poll():
         agent = _instantiate_agent(cfg, tools)
         with _running_lock:
             _running_tasks[agent_id] = {"agent": agent, "task": task_text}
-            _running_counts[agent_id] = _running_counts.get(agent_id, 0) + 1
 
-        succeeded = False
-        try:
-            task = Task(task_text)
-            result = agent.do(task, return_output=True)
-            track(result, agent_name=cfg["name"], task=task)
-            wall_duration = time.monotonic() - wall_start
-            real_run_id = getattr(result, "run_id", None)
-            if real_run_id:
-                with get_conn() as conn:
-                    conn.execute("UPDATE runs SET duration_s = ? WHERE run_id = ?", (wall_duration, real_run_id))
-            succeeded = True
-        finally:
-            with _running_lock:
-                _running_tasks.pop(agent_id, None)
-                _running_counts[agent_id] = max(0, _running_counts.get(agent_id, 1) - 1)
-                if not _running_counts[agent_id]:
-                    del _running_counts[agent_id]
+        task = Task(task_text)
+        result = agent.do(task, return_output=True)
+        track(result, agent_name=cfg["name"], task=task)
+        wall_duration = time.monotonic() - wall_start
+        real_run_id = getattr(result, "run_id", None)
+        if real_run_id:
             with get_conn() as conn:
-                if succeeded:
-                    conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
-                else:
-                    conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))
-
-        now = datetime.now(timezone.utc).isoformat()
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES ('pm_last_poll', ?)", (now,)
-            )
-        logger.info("PM watcher: check complete")
+                conn.execute("UPDATE runs SET duration_s = ? WHERE run_id = ?", (wall_duration, real_run_id))
+        succeeded = True
     except Exception:
-        logger.exception("PM watcher: error during poll")
+        logger.exception("Schedule watcher: error during scheduled run for agent %d", agent_id)
+    finally:
+        with _running_lock:
+            _running_tasks.pop(agent_id, None)
+            _running_counts[agent_id] = max(0, _running_counts.get(agent_id, 1) - 1)
+            if not _running_counts[agent_id]:
+                del _running_counts[agent_id]
+        with get_conn() as conn:
+            if succeeded:
+                conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
+            else:
+                conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))
+
+    logger.info("Schedule watcher: run complete for '%s'", cfg["name"])
 
 
 # ---------------------------------------------------------------------------
@@ -364,12 +342,22 @@ class SettingsUpdate(BaseModel):
     data: dict
 
 
-@app.post("/api/pm/poll")
-async def trigger_pm_poll():
-    """Manually trigger a Project Manager Trello check immediately."""
+@app.post("/api/agents/{agent_id}/check-now")
+async def trigger_check_now(agent_id: int):
+    """Manually trigger a scheduled run for any agent."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not row["enabled"]:
+        raise HTTPException(status_code=400, detail="Agent is disabled")
+    # Reset the schedule timer so the next scheduled run counts from now
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute("UPDATE agents SET schedule_last_run = ? WHERE id = ?", (now, agent_id))
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run_pm_poll)
-    return {"ok": True, "message": "PM check triggered"}
+    loop.run_in_executor(None, _run_scheduled_agent, agent_id)
+    return {"ok": True, "message": f"Scheduled run triggered for '{row['name']}'"}
 
 
 @app.post("/api/server/restart")
@@ -386,11 +374,17 @@ async def restart_server():
     return {"ok": True, "message": "Server is restarting…"}
 
 
+_SENSITIVE_KEYS = {"anthropic_api_key", "openai_api_key", "google_api_key", "github_token", "jira_token", "trello_token"}
+
 @app.get("/api/settings")
 def get_settings():
     with get_conn() as conn:
         rows = conn.execute("SELECT key, value FROM settings").fetchall()
-    return {r["key"]: r["value"] for r in rows}
+    result = {}
+    for r in rows:
+        k, v = r["key"], r["value"]
+        result[k] = True if (k in _SENSITIVE_KEYS and v) else v
+    return result
 
 
 @app.put("/api/settings")
@@ -431,6 +425,10 @@ class AgentCreate(BaseModel):
     context_management: Optional[bool] = None
     context_management_keep_recent: Optional[int] = None
     context_management_model: Optional[str] = None
+    memory_enabled: Optional[bool] = None
+    schedule_enabled: Optional[bool] = None
+    schedule_interval: Optional[int] = None
+    schedule_unit: Optional[str] = None
 
 
 class AgentUpdate(BaseModel):
@@ -456,6 +454,10 @@ class AgentUpdate(BaseModel):
     context_management: Optional[bool] = None
     context_management_keep_recent: Optional[int] = None
     context_management_model: Optional[str] = None
+    memory_enabled: Optional[bool] = None
+    schedule_enabled: Optional[bool] = None
+    schedule_interval: Optional[int] = None
+    schedule_unit: Optional[str] = None
 
 
 class RunTaskRequest(BaseModel):
@@ -476,6 +478,8 @@ def list_agents():
                    a.reflection, a.enable_thinking_tool, a.enable_reasoning_tool,
                    a.reasoning_effort, a.thinking_budget, a.tool_call_limit,
                    a.context_management, a.context_management_keep_recent, a.context_management_model,
+                   a.memory_enabled,
+                   a.schedule_enabled, a.schedule_interval, a.schedule_unit, a.schedule_last_run,
                    COUNT(r.id) AS run_count,
                    MAX(r.recorded_at) AS last_run
             FROM agents a
@@ -495,8 +499,9 @@ def create_agent(body: AgentCreate):
             cur = conn.execute(
                 "INSERT INTO agents (name, model, system_prompt, tools, agent_type, workspace, max_instances, enabled, created_at, updated_at, "
                 "role, goal, instructions, education, work_experience, reflection, enable_thinking_tool, enable_reasoning_tool, reasoning_effort, thinking_budget, tool_call_limit, "
-                "context_management, context_management_keep_recent, context_management_model) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "context_management, context_management_keep_recent, context_management_model, memory_enabled, "
+                "schedule_enabled, schedule_interval, schedule_unit) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (body.name, body.model, body.system_prompt, tools_json,
                  body.agent_type, body.workspace or None, body.max_instances, now, now,
                  body.role, body.goal, body.instructions, body.education, body.work_experience,
@@ -505,7 +510,10 @@ def create_agent(body: AgentCreate):
                  int(body.enable_reasoning_tool) if body.enable_reasoning_tool is not None else None,
                  body.reasoning_effort, body.thinking_budget, body.tool_call_limit,
                  int(body.context_management) if body.context_management is not None else None,
-                 body.context_management_keep_recent, body.context_management_model),
+                 body.context_management_keep_recent, body.context_management_model,
+                 int(body.memory_enabled) if body.memory_enabled is not None else None,
+                 int(body.schedule_enabled) if body.schedule_enabled is not None else None,
+                 body.schedule_interval, body.schedule_unit),
             )
             agent_id = cur.lastrowid
         with get_conn() as conn:
@@ -565,6 +573,14 @@ def update_agent(agent_id: int, body: AgentUpdate):
         fields["context_management_keep_recent"] = body.context_management_keep_recent
     if "context_management_model" in _fields_set:
         fields["context_management_model"] = body.context_management_model
+    if body.memory_enabled is not None:
+        fields["memory_enabled"] = int(body.memory_enabled)
+    if body.schedule_enabled is not None:
+        fields["schedule_enabled"] = int(body.schedule_enabled)
+    if "schedule_interval" in _fields_set:
+        fields["schedule_interval"] = body.schedule_interval
+    if "schedule_unit" in _fields_set:
+        fields["schedule_unit"] = body.schedule_unit
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -629,6 +645,15 @@ def agent_stats(agent_id: int):
     return dict(row)
 
 
+def _find_bun() -> str:
+    """Locate the bun binary on the system PATH."""
+    import shutil
+    path = shutil.which("bun")
+    if not path:
+        raise FileNotFoundError("bun not found on PATH. Install it: https://bun.sh")
+    return path
+
+
 def _build_tools(agent_cfg: dict) -> list:
     """Build the tool list for an agent config dict."""
     tool_names = json.loads(agent_cfg.get("tools") or "[]")
@@ -646,25 +671,70 @@ def _build_tools(agent_cfg: dict) -> list:
             jira_url = _s("jira_mcp_url")
             trello_key = _s("trello_api_key")
             trello_token = _s("trello_token")
+            trello_workspace = _s("trello_workspace")
         if "GitHub" in tool_names and gh_token and gh_url:
             tools.append(MCPServerTool(id="github", url=gh_url, authorization_token=gh_token))
         if "Jira" in tool_names and jira_token and jira_url:
             tools.append(MCPServerTool(id="jira", url=jira_url, authorization_token=jira_token))
         if "Trello" in tool_names and trello_key and trello_token:
             tools.append(MCPHandler(
-                command="/Users/doug/.bun/bin/bun x @delorenj/mcp-server-trello",
+                command=f"{_find_bun()} x @delorenj/mcp-server-trello",
                 env={"TRELLO_API_KEY": trello_key, "TRELLO_TOKEN": trello_token},
                 transport="stdio",
             ))
+            if trello_workspace:
+                agent_cfg["_trello_workspace"] = trello_workspace
     return tools
+
+
+_MEMORY_DB = Path(__file__).parent.parent / "data" / "memory.db"
+
+
+def _build_memory(cfg: dict):
+    """Build a Memory instance for an agent if memory is enabled, else None."""
+    if not cfg.get("memory_enabled"):
+        return None
+    from upsonic.storage.memory import Memory  # type: ignore
+    from upsonic.storage.sqlite import SqliteStorage  # type: ignore
+    storage = SqliteStorage(db_file=str(_MEMORY_DB))
+    agent_name = cfg.get("name", "agent")
+    return Memory(
+        storage=storage,
+        session_id=f"agent-{agent_name}",
+        full_session_memory=True,
+        summary_memory=True,
+        model=cfg.get("model", "claude-sonnet-4-6"),
+    )
+
+
+def _ensure_provider_keys():
+    """Load API keys from settings into os.environ so providers can find them."""
+    import os
+    key_map = {
+        "anthropic_api_key": "ANTHROPIC_API_KEY",
+        "openai_api_key": "OPENAI_API_KEY",
+        "google_api_key": "GOOGLE_API_KEY",
+    }
+    with get_conn() as conn:
+        for setting_key, env_var in key_map.items():
+            if not os.environ.get(env_var):
+                row = conn.execute("SELECT value FROM settings WHERE key=?", (setting_key,)).fetchone()
+                if row and row["value"]:
+                    os.environ[env_var] = row["value"]
 
 
 def _instantiate_agent(cfg: dict, tools: list):
     """Instantiate the right agent class based on cfg['agent_type']."""
+    _ensure_provider_keys()
     agent_type = cfg.get("agent_type") or "standard"
     kwargs = {"name": cfg["name"]}
-    if cfg.get("system_prompt"):
-        kwargs["system_prompt"] = cfg["system_prompt"]
+    system_prompt = cfg.get("system_prompt") or ""
+    # Inject Trello workspace context if configured
+    trello_ws = cfg.get("_trello_workspace")
+    if trello_ws:
+        system_prompt += f"\n\n[Trello workspace: \"{trello_ws}\". If available, use list_boards_in_workspace with this name/ID to scope queries to this workspace.]"
+    if system_prompt.strip():
+        kwargs["system_prompt"] = system_prompt.strip()
     if tools:
         kwargs["tools"] = tools
     # High-value attributes
@@ -690,18 +760,34 @@ def _instantiate_agent(cfg: dict, tools: list):
         kwargs["context_management_keep_recent"] = cfg["context_management_keep_recent"]
     if cfg.get("context_management_model"):
         kwargs["context_management_model"] = cfg["context_management_model"]
+    memory = _build_memory(cfg)
+    if memory is not None:
+        kwargs["memory"] = memory
     model = cfg["model"]
+    # Enable Anthropic prompt caching for tool definitions and system prompt
+    # to avoid re-sending full schemas on every round-trip.
+    cache_settings = {
+        "anthropic_cache_tool_definitions": True,
+        "anthropic_cache_instructions": True,
+    }
     if agent_type == "autonomous":
         from upsonic import AutonomousAgent  # type: ignore
         # Callers must supply a fresh per-invocation workspace path via cfg["workspace"].
         workspace = cfg.get("workspace") or "."
-        return AutonomousAgent(model, workspace=str(workspace), **kwargs)
+        agent = AutonomousAgent(model, workspace=str(workspace), **kwargs)
     elif agent_type == "deep":
         from upsonic.agent import DeepAgent  # type: ignore
-        return DeepAgent(model, **kwargs)
+        agent = DeepAgent(model, **kwargs)
     else:
         from upsonic import Agent  # type: ignore
-        return Agent(model, **kwargs)
+        agent = Agent(model, **kwargs)
+    # Inject cache settings into the model
+    if hasattr(agent, "model") and hasattr(agent.model, "_settings"):
+        if agent.model._settings:
+            agent.model._settings.update(cache_settings)
+        else:
+            agent.model._settings = cache_settings
+    return agent
 
 
 # ---------------------------------------------------------------------------

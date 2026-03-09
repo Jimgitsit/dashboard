@@ -115,7 +115,11 @@
   .section-title:first-child { margin-top: 0; }
 
   /* Forms */
+  fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px 6px; margin: 0 0 14px; }
+  fieldset legend { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 6px; }
   .form-group { margin-bottom: 14px; }
+  .field-changed input, .field-changed select, .field-changed textarea { border-color: var(--warning) !important; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 2px rgba(251,191,36,0.15) !important; }
+  .field-changed label.toggle, .field-changed > div label { color: var(--warning) !important; }
   label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
   input[type=text], input[type=number], input[type=password], textarea, select {
     width: 100%;
@@ -455,6 +459,21 @@
 <div id="tab-settings" class="tab-pane">
   <div style="max-width:560px;">
     <div class="table-card" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">Model Providers</h3>
+      <div class="form-group">
+        <label>Anthropic API Key</label>
+        <input type="password" id="setting-anthropic-key" placeholder="sk-ant-…">
+      </div>
+      <div class="form-group">
+        <label>OpenAI API Key</label>
+        <input type="password" id="setting-openai-key" placeholder="sk-…">
+      </div>
+      <div class="form-group">
+        <label>Google AI API Key</label>
+        <input type="password" id="setting-google-key" placeholder="AIza…">
+      </div>
+    </div>
+    <div class="table-card" style="padding:20px;margin-bottom:16px;">
       <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">GitHub</h3>
       <div class="form-group">
         <label>MCP Server URL</label>
@@ -486,24 +505,9 @@
         <label>Token</label>
         <input type="text" id="setting-trello-token" placeholder="Your Trello auth token">
       </div>
-    </div>
-    <div class="table-card" style="padding:20px;margin-bottom:16px;">
-      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;text-transform:none;letter-spacing:0;">Project Manager Watcher</h3>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Periodically wakes the Project Manager to check Trello for changes and act on them.</p>
-      <div class="form-group" style="display:flex;align-items:center;gap:12px;">
-        <label style="margin:0;white-space:nowrap;">Enable</label>
-        <label class="toggle">
-          <input type="checkbox" id="setting-pm-poll-enabled" onchange="saveSettings()">
-          <span class="slider"></span>
-        </label>
-      </div>
       <div class="form-group">
-        <label>Interval (minutes)</label>
-        <input type="text" id="setting-pm-poll-interval" placeholder="15" style="max-width:100px;">
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Last check: <span id="setting-pm-last-poll">–</span></div>
-      <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" onclick="triggerPmPoll()">▶ Check Now</button>
+        <label>Workspace</label>
+        <input type="text" id="setting-trello-workspace" placeholder="Workspace name or ID">
       </div>
     </div>
     <div class="btn-row">
@@ -522,7 +526,7 @@
 // ============================================================
 let trendChart = null;
 let agentChart = null;
-let selectedAgentId = null;
+let selectedAgentId = parseInt(localStorage.getItem('selectedAgentId')) || null;
 let agentsData = [];
 const _runTaskMap = new Map(); // run DB id -> {agentId, task}
 
@@ -560,35 +564,29 @@ function showDetailTab(tabId, btn) {
 async function loadSettings() {
   try {
     const s = await api('/api/settings');
+    document.getElementById('setting-anthropic-key').value = s.anthropic_api_key ? '••••••••' : '';
+    document.getElementById('setting-openai-key').value = s.openai_api_key ? '••••••••' : '';
+    document.getElementById('setting-google-key').value = s.google_api_key ? '••••••••' : '';
     document.getElementById('setting-github-url').value = s.github_mcp_url || '';
     document.getElementById('setting-github-token').value = s.github_token ? '••••••••' : '';
     document.getElementById('setting-jira-url').value = s.jira_mcp_url || '';
     document.getElementById('setting-jira-token').value = s.jira_token ? '••••••••' : '';
     document.getElementById('setting-trello-key').value = s.trello_api_key || '';
     document.getElementById('setting-trello-token').value = s.trello_token ? '••••••••' : '';
-    document.getElementById('setting-pm-poll-enabled').checked = s.pm_poll_enabled === '1';
-    document.getElementById('setting-pm-poll-interval').value = s.pm_poll_interval || '15';
-    document.getElementById('setting-pm-last-poll').textContent = s.pm_last_poll ? new Date(s.pm_last_poll).toLocaleString() : 'Never';
+    document.getElementById('setting-trello-workspace').value = s.trello_workspace || '';
   } catch(e) {
     console.error('Failed to load settings:', e);
   }
 }
 
-async function triggerPmPoll() {
-  const msgEl = document.getElementById('settings-msg');
-  try {
-    await api('/api/pm/poll', { method: 'POST' });
-    msgEl.textContent = 'PM check triggered — results will appear in the Metrics tab.';
-    msgEl.className = 'success-msg';
-    setTimeout(() => { msgEl.textContent = ''; }, 5000);
-  } catch(e) {
-    msgEl.textContent = 'Error: ' + e.message;
-    msgEl.className = 'error-msg';
-  }
-}
-
 async function saveSettings() {
   const data = {};
+  const anthropicKey = document.getElementById('setting-anthropic-key').value.trim();
+  if (anthropicKey && anthropicKey !== '••••••••') data.anthropic_api_key = anthropicKey;
+  const openaiKey = document.getElementById('setting-openai-key').value.trim();
+  if (openaiKey && openaiKey !== '••••••••') data.openai_api_key = openaiKey;
+  const googleKey = document.getElementById('setting-google-key').value.trim();
+  if (googleKey && googleKey !== '••••••••') data.google_api_key = googleKey;
   const ghUrl = document.getElementById('setting-github-url').value.trim();
   const ghToken = document.getElementById('setting-github-token').value.trim();
   if (ghUrl) data.github_mcp_url = ghUrl;
@@ -601,9 +599,8 @@ async function saveSettings() {
   const trelloToken = document.getElementById('setting-trello-token').value.trim();
   if (trelloKey) data.trello_api_key = trelloKey;
   if (trelloToken && trelloToken !== '••••••••') data.trello_token = trelloToken;
-  data.pm_poll_enabled = document.getElementById('setting-pm-poll-enabled').checked ? '1' : '0';
-  const interval = document.getElementById('setting-pm-poll-interval').value.trim();
-  if (interval) data.pm_poll_interval = interval;
+  const trelloWorkspace = document.getElementById('setting-trello-workspace').value.trim();
+  data.trello_workspace = trelloWorkspace || '';
   const msgEl = document.getElementById('settings-msg');
   try {
     await api('/api/settings', {
@@ -867,6 +864,50 @@ function tickRunningElapsed() {
 }
 setInterval(tickRunningElapsed, 1000);
 
+function tickScheduleCountdowns() {
+  const now = Date.now();
+  document.querySelectorAll('.schedule-countdown').forEach(el => {
+    const last = el.dataset.last;
+    const interval = parseInt(el.dataset.interval) || 0;
+    const unit = el.dataset.unit || 'hours';
+    const multiplier = { mins: 60, hours: 3600, days: 86400 }[unit] || 3600;
+    const intervalMs = interval * multiplier * 1000;
+    if (!interval) { el.textContent = 'scheduled (no interval)'; return; }
+    if (!last) { el.textContent = 'next run: due now'; return; }
+    const nextRun = new Date(last).getTime() + intervalMs;
+    const remaining = Math.max(0, Math.floor((nextRun - now) / 1000));
+    if (remaining <= 0) { el.textContent = 'next run: due now'; return; }
+    if (remaining >= 3600) {
+      const h = Math.floor(remaining / 3600);
+      const m = Math.floor((remaining % 3600) / 60);
+      el.textContent = `next run: ${h}h ${m}m`;
+    } else if (remaining >= 60) {
+      const m = Math.floor(remaining / 60);
+      const s = remaining % 60;
+      el.textContent = `next run: ${m}m ${s}s`;
+    } else {
+      el.textContent = `next run: ${remaining}s`;
+    }
+  });
+}
+setInterval(tickScheduleCountdowns, 1000);
+
+async function triggerCheckNow(agentId) {
+  const msgEl = document.getElementById(`check-now-msg-${agentId}`);
+  try {
+    msgEl.textContent = 'Triggering…';
+    msgEl.style.color = 'var(--muted)';
+    await api(`/api/agents/${agentId}/check-now`, { method: 'POST' });
+    msgEl.textContent = 'Running! Results will appear in run history.';
+    await loadAgents(); // refresh countdown timer
+    msgEl.style.color = 'var(--success)';
+    setTimeout(() => { msgEl.textContent = ''; }, 5000);
+  } catch(e) {
+    msgEl.textContent = 'Error: ' + e.message;
+    msgEl.style.color = 'var(--danger)';
+  }
+}
+
 let _nextRefreshIn = 30;
 setInterval(() => {
   _nextRefreshIn = Math.max(0, _nextRefreshIn - 1);
@@ -905,6 +946,177 @@ async function loadAgents() {
   }
 }
 
+// --- Unsaved changes persistence helpers ---
+function getFormValues(id) {
+  const val = (sel) => { const el = document.getElementById(sel); return el ? el.value : ''; };
+  const chk = (sel) => { const el = document.getElementById(sel); return el ? el.checked : false; };
+  const intOrNull = (v) => { const s = String(v).trim(); return s ? parseInt(s) : null; };
+  return {
+    model: val(`edit-model-${id}`),
+    system_prompt: val(`edit-prompt-${id}`).trim() || null,
+    tools: Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value),
+    agent_type: val(`edit-type-${id}`),
+    max_instances: intOrNull(val(`edit-max-instances-${id}`)),
+    role: val(`edit-role-${id}`).trim() || null,
+    goal: val(`edit-goal-${id}`).trim() || null,
+    instructions: val(`edit-instructions-${id}`).trim() || null,
+    education: val(`edit-education-${id}`).trim() || null,
+    work_experience: val(`edit-work-experience-${id}`).trim() || null,
+    reasoning_effort: val(`edit-reasoning-effort-${id}`) || null,
+    tool_call_limit: intOrNull(val(`edit-tool-call-limit-${id}`)),
+    thinking_budget: intOrNull(val(`edit-thinking-budget-${id}`)),
+    reflection: chk(`edit-reflection-${id}`),
+    enable_thinking_tool: chk(`edit-thinking-tool-${id}`),
+    enable_reasoning_tool: chk(`edit-reasoning-tool-${id}`),
+    context_management: chk(`edit-context-management-${id}`),
+    context_management_keep_recent: intOrNull(val(`edit-context-management-keep-recent-${id}`)),
+    context_management_model: val(`edit-context-management-model-${id}`) || null,
+    memory_enabled: chk(`edit-memory-enabled-${id}`),
+    schedule_enabled: chk(`edit-schedule-enabled-${id}`),
+    schedule_interval: intOrNull(val(`edit-schedule-interval-${id}`)),
+    schedule_unit: val(`edit-schedule-unit-${id}`) || 'hours',
+  };
+}
+
+function normVal(v) {
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  if (v === null || v === undefined || v === '') return null;
+  return v;
+}
+
+function hasPendingChanges(id) {
+  const agent = agentsData.find(a => a.id === id);
+  if (!agent) return false;
+  const pending = getPendingConfig(id);
+  if (!pending) return false;
+  const saved = {
+    model: agent.model, system_prompt: agent.system_prompt || null,
+    tools: agent.tools ? JSON.parse(agent.tools) : [],
+    agent_type: agent.agent_type || 'standard', max_instances: agent.max_instances ?? null,
+    role: agent.role || null, goal: agent.goal || null, instructions: agent.instructions || null,
+    education: agent.education || null, work_experience: agent.work_experience || null,
+    reasoning_effort: agent.reasoning_effort || null,
+    tool_call_limit: agent.tool_call_limit ?? null, thinking_budget: agent.thinking_budget ?? null,
+    reflection: !!agent.reflection, enable_thinking_tool: !!agent.enable_thinking_tool,
+    enable_reasoning_tool: !!agent.enable_reasoning_tool,
+    context_management: !!agent.context_management,
+    context_management_keep_recent: agent.context_management_keep_recent ?? null,
+    context_management_model: agent.context_management_model || null,
+    memory_enabled: !!agent.memory_enabled, schedule_enabled: !!agent.schedule_enabled,
+    schedule_interval: agent.schedule_interval ?? null, schedule_unit: agent.schedule_unit || 'hours',
+  };
+  for (const key of Object.keys(saved)) {
+    const a = normVal(saved[key]);
+    const b = normVal(pending[key]);
+    if (key === 'tools') {
+      const arrA = Array.isArray(a) ? a.slice().sort() : [];
+      const arrB = Array.isArray(b) ? b.slice().sort() : [];
+      if (JSON.stringify(arrA) !== JSON.stringify(arrB)) return true;
+    } else if (a !== b) return true;
+  }
+  return false;
+}
+
+function getPendingConfig(id) {
+  try {
+    const all = JSON.parse(localStorage.getItem('pendingAgentConfigs') || '{}');
+    return all[id] || null;
+  } catch { return null; }
+}
+
+function savePendingConfig(id) {
+  try {
+    const all = JSON.parse(localStorage.getItem('pendingAgentConfigs') || '{}');
+    all[id] = getFormValues(id);
+    localStorage.setItem('pendingAgentConfigs', JSON.stringify(all));
+    // If form matches saved data, clear the pending entry
+    if (!hasPendingChanges(id)) {
+      delete all[id];
+      localStorage.setItem('pendingAgentConfigs', JSON.stringify(all));
+    }
+  } catch {}
+  renderAgentList();
+}
+
+function clearPendingConfig(id) {
+  try {
+    const all = JSON.parse(localStorage.getItem('pendingAgentConfigs') || '{}');
+    delete all[id];
+    localStorage.setItem('pendingAgentConfigs', JSON.stringify(all));
+  } catch {}
+}
+
+function highlightChangedFields(id) {
+  const agent = agentsData.find(a => a.id === id);
+  if (!agent) return;
+  const fieldMap = {
+    model: `edit-model-${id}`,
+    system_prompt: `edit-prompt-${id}`,
+    agent_type: `edit-type-${id}`,
+    max_instances: `edit-max-instances-${id}`,
+    role: `edit-role-${id}`,
+    goal: `edit-goal-${id}`,
+    instructions: `edit-instructions-${id}`,
+    education: `edit-education-${id}`,
+    work_experience: `edit-work-experience-${id}`,
+    reasoning_effort: `edit-reasoning-effort-${id}`,
+    tool_call_limit: `edit-tool-call-limit-${id}`,
+    thinking_budget: `edit-thinking-budget-${id}`,
+    reflection: `edit-reflection-${id}`,
+    enable_thinking_tool: `edit-thinking-tool-${id}`,
+    enable_reasoning_tool: `edit-reasoning-tool-${id}`,
+    context_management: `edit-context-management-${id}`,
+    context_management_keep_recent: `edit-context-management-keep-recent-${id}`,
+    context_management_model: `edit-context-management-model-${id}`,
+    memory_enabled: `edit-memory-enabled-${id}`,
+    schedule_enabled: `edit-schedule-enabled-${id}`,
+    schedule_interval: `edit-schedule-interval-${id}`,
+    schedule_unit: `edit-schedule-unit-${id}`,
+  };
+  const savedTools = agent.tools ? JSON.parse(agent.tools) : [];
+  const formTools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
+  const toolsChanged = JSON.stringify(savedTools.slice().sort()) !== JSON.stringify(formTools.slice().sort());
+  // Find the tools .form-group container
+  const toolCbs = document.querySelectorAll(`.edit-tool-cb-${id}`);
+  if (toolCbs.length) {
+    const toolFormGroup = toolCbs[0].closest('.form-group');
+    if (toolFormGroup) toolFormGroup.classList.toggle('field-changed', toolsChanged);
+  }
+  const savedVals = {
+    model: agent.model, system_prompt: agent.system_prompt || null,
+    agent_type: agent.agent_type || 'standard', max_instances: agent.max_instances ?? null,
+    role: agent.role || null, goal: agent.goal || null, instructions: agent.instructions || null,
+    education: agent.education || null, work_experience: agent.work_experience || null,
+    reasoning_effort: agent.reasoning_effort || null,
+    tool_call_limit: agent.tool_call_limit ?? null, thinking_budget: agent.thinking_budget ?? null,
+    reflection: !!agent.reflection, enable_thinking_tool: !!agent.enable_thinking_tool,
+    enable_reasoning_tool: !!agent.enable_reasoning_tool,
+    context_management: !!agent.context_management,
+    context_management_keep_recent: agent.context_management_keep_recent ?? null,
+    context_management_model: agent.context_management_model || null,
+    memory_enabled: !!agent.memory_enabled, schedule_enabled: !!agent.schedule_enabled,
+    schedule_interval: agent.schedule_interval ?? null, schedule_unit: agent.schedule_unit || 'hours',
+  };
+  for (const [key, elId] of Object.entries(fieldMap)) {
+    const el = document.getElementById(elId);
+    if (!el) continue;
+    const formGroup = el.closest('.form-group');
+    if (!formGroup) continue;
+    let formVal, savedVal = savedVals[key];
+    if (el.type === 'checkbox') {
+      formVal = el.checked;
+      savedVal = !!savedVal;
+    } else if (el.type === 'number') {
+      const raw = el.value.trim();
+      formVal = raw ? parseInt(raw) : null;
+    } else {
+      formVal = el.value.trim() || null;
+    }
+    formGroup.classList.toggle('field-changed', normVal(formVal) !== normVal(savedVal));
+  }
+}
+
 function renderAgentList() {
   const el = document.getElementById('agent-list');
   if (!agentsData.length) {
@@ -925,12 +1137,15 @@ function renderAgentList() {
         <span>${a.run_count || 0} runs</span>
         <span>${a.last_run ? 'last: ' + fmtTime(a.last_run) : 'never run'}</span>
       </div>
+      ${a.schedule_enabled ? `<div class="agent-meta" style="margin-top:4px;"><span class="schedule-countdown" data-last="${a.schedule_last_run||''}" data-interval="${a.schedule_interval||0}" data-unit="${a.schedule_unit||'mins'}" style="color:var(--accent);font-size:11px;"></span></div>` : ''}
+      ${hasPendingChanges(a.id) ? `<div class="agent-meta" style="margin-top:4px;"><span style="color:var(--warning);font-size:11px;">unsaved changes</span></div>` : ''}
     </div>
   `).join('');
 }
 
 function selectAgent(id) {
   selectedAgentId = id;
+  localStorage.setItem('selectedAgentId', id);
   const agent = agentsData.find(a => a.id === id);
   renderAgentList(); // re-render to update selection highlight
   if (agent) renderAgentDetail(agent);
@@ -942,7 +1157,10 @@ async function renderAgentDetail(agent) {
     <div class="detail-panel">
       <div class="detail-header">
         <span style="font-weight:700;font-size:15px;">${escHtml(agent.name)}</span>
-        <button class="btn btn-danger btn-sm" onclick="deleteAgent(${agent.id})">Delete</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="saveAgentConfig(${agent.id})">Save Config</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAgent(${agent.id})">Delete</button>
+        </div>
       </div>
       <div class="detail-tabs">
         <button class="detail-tab-btn active" onclick="showDetailTab('config-${agent.id}', this)">Config</button>
@@ -961,129 +1179,163 @@ async function renderAgentDetail(agent) {
             </div>
           </div>
           <div id="form-editor-${agent.id}">
-            <!-- Row: Model + Agent Type -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-              <div class="form-group">
-                <label>Model</label>
-                <select id="edit-model-${agent.id}">
-                  <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
-                  <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
-                  <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>claude-haiku-4-5-20251001</option>
-                </select>
+            <fieldset>
+              <legend>Model & Type</legend>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                <div class="form-group">
+                  <label>Model</label>
+                  <select id="edit-model-${agent.id}">
+                    <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
+                    <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
+                    <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>claude-haiku-4-5-20251001</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Agent Type</label>
+                  <select id="edit-type-${agent.id}">
+                    <option value="standard" ${(agent.agent_type||'standard')==='standard'?'selected':''}>Standard</option>
+                    <option value="autonomous" ${agent.agent_type==='autonomous'?'selected':''}>Autonomous (filesystem + shell)</option>
+                    <option value="deep" ${agent.agent_type==='deep'?'selected':''}>Deep (multi-step planning)</option>
+                  </select>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Tools</legend>
+              <div class="form-group" style="margin-bottom:0;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                  ${[['WebSearchTool','WebSearchTool'],['CodeExecutionTool','CodeExecutionTool'],['GitHub','GitHub (MCP)'],['Jira','Jira (MCP)'],['Trello','Trello (MCP)'],['SpawnAgents','Spawn Agents']].map(([val, label]) => {
+                    const checked = (agent.tools ? JSON.parse(agent.tools) : []).includes(val) ? 'checked' : '';
+                    return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" value="${val}" class="edit-tool-cb-${agent.id}" ${checked}> ${label}</label>`;
+                  }).join('')}
+                </div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Identity</legend>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                <div class="form-group">
+                  <label>Role</label>
+                  <input type="text" id="edit-role-${agent.id}" value="${escHtml(agent.role||'')}" placeholder="e.g. Senior Software Engineer">
+                </div>
+                <div class="form-group">
+                  <label>Goal</label>
+                  <input type="text" id="edit-goal-${agent.id}" value="${escHtml(agent.goal||'')}" placeholder="Primary objective">
+                </div>
               </div>
               <div class="form-group">
-                <label>Agent Type</label>
-                <select id="edit-type-${agent.id}">
-                  <option value="standard" ${(agent.agent_type||'standard')==='standard'?'selected':''}>Standard</option>
-                  <option value="autonomous" ${agent.agent_type==='autonomous'?'selected':''}>Autonomous (filesystem + shell)</option>
-                  <option value="deep" ${agent.agent_type==='deep'?'selected':''}>Deep (multi-step planning)</option>
-                </select>
+                <label>Instructions</label>
+                <textarea id="edit-instructions-${agent.id}" style="min-height:80px;">${escHtml(agent.instructions||'')}</textarea>
               </div>
-            </div>
-            <!-- Full: Tools (2-col checkbox grid) -->
-            <div class="form-group">
-              <label>Tools</label>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                ${[['WebSearchTool','WebSearchTool'],['CodeExecutionTool','CodeExecutionTool'],['GitHub','GitHub (MCP)'],['Jira','Jira (MCP)'],['Trello','Trello (MCP)'],['SpawnAgents','Spawn Agents']].map(([val, label]) => {
-                  const checked = (agent.tools ? JSON.parse(agent.tools) : []).includes(val) ? 'checked' : '';
-                  return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" value="${val}" class="edit-tool-cb-${agent.id}" ${checked}> ${label}</label>`;
-                }).join('')}
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                <div class="form-group">
+                  <label>Education</label>
+                  <input type="text" id="edit-education-${agent.id}" value="${escHtml(agent.education||'')}" placeholder="Background knowledge">
+                </div>
+                <div class="form-group">
+                  <label>Work Experience</label>
+                  <input type="text" id="edit-work-experience-${agent.id}" value="${escHtml(agent.work_experience||'')}" placeholder="Experience context">
+                </div>
               </div>
-            </div>
-            <!-- Row: Role + Goal -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-              <div class="form-group">
-                <label>Role</label>
-                <input type="text" id="edit-role-${agent.id}" value="${escHtml(agent.role||'')}" placeholder="e.g. Senior Software Engineer">
+            </fieldset>
+            <fieldset>
+              <legend>Reasoning & Limits</legend>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                <div class="form-group">
+                  <label>Reasoning Effort</label>
+                  <select id="edit-reasoning-effort-${agent.id}">
+                    <option value="" ${!agent.reasoning_effort?'selected':''}>Default</option>
+                    <option value="low" ${agent.reasoning_effort==='low'?'selected':''}>Low</option>
+                    <option value="medium" ${agent.reasoning_effort==='medium'?'selected':''}>Medium</option>
+                    <option value="high" ${agent.reasoning_effort==='high'?'selected':''}>High</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Tool Call Limit</label>
+                  <input type="number" id="edit-tool-call-limit-${agent.id}" min="1" value="${agent.tool_call_limit??''}" placeholder="Default (5)">
+                </div>
               </div>
-              <div class="form-group">
-                <label>Goal</label>
-                <input type="text" id="edit-goal-${agent.id}" value="${escHtml(agent.goal||'')}" placeholder="Primary objective">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                <div class="form-group">
+                  <label>Thinking Budget <span style="color:var(--muted);font-weight:normal;">(tokens)</span></label>
+                  <input type="number" id="edit-thinking-budget-${agent.id}" min="1" value="${agent.thinking_budget??''}" placeholder="None">
+                </div>
+                <div class="form-group">
+                  <label>Max Concurrent Instances</label>
+                  <input type="number" id="edit-max-instances-${agent.id}" min="1" value="${agent.max_instances ?? ''}" placeholder="Unlimited">
+                </div>
               </div>
-            </div>
-            <!-- Full: Instructions -->
-            <div class="form-group">
-              <label>Instructions</label>
-              <textarea id="edit-instructions-${agent.id}" style="min-height:80px;">${escHtml(agent.instructions||'')}</textarea>
-            </div>
-            <!-- Row: Education + Work Experience -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-              <div class="form-group">
-                <label>Education</label>
-                <input type="text" id="edit-education-${agent.id}" value="${escHtml(agent.education||'')}" placeholder="Background knowledge">
+            </fieldset>
+            <fieldset>
+              <legend>Capabilities</legend>
+              <div class="form-group" style="margin-bottom:8px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reflection-${agent.id}" ${agent.reflection?'checked':''}> Reflection</label>
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-thinking-tool-${agent.id}" ${agent.enable_thinking_tool?'checked':''}> Thinking Tool</label>
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reasoning-tool-${agent.id}" ${agent.enable_reasoning_tool?'checked':''}> Reasoning Tool</label>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Work Experience</label>
-                <input type="text" id="edit-work-experience-${agent.id}" value="${escHtml(agent.work_experience||'')}" placeholder="Experience context">
-              </div>
-            </div>
-            <!-- Row: Reasoning Effort + Tool Call Limit -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-              <div class="form-group">
-                <label>Reasoning Effort</label>
-                <select id="edit-reasoning-effort-${agent.id}">
-                  <option value="" ${!agent.reasoning_effort?'selected':''}>Default</option>
-                  <option value="low" ${agent.reasoning_effort==='low'?'selected':''}>Low</option>
-                  <option value="medium" ${agent.reasoning_effort==='medium'?'selected':''}>Medium</option>
-                  <option value="high" ${agent.reasoning_effort==='high'?'selected':''}>High</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Tool Call Limit</label>
-                <input type="number" id="edit-tool-call-limit-${agent.id}" min="1" value="${agent.tool_call_limit??''}" placeholder="Default (5)">
-              </div>
-            </div>
-            <!-- Row: Thinking Budget + Max Instances -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-              <div class="form-group">
-                <label>Thinking Budget <span style="color:var(--muted);font-weight:normal;">(tokens)</span></label>
-                <input type="number" id="edit-thinking-budget-${agent.id}" min="1" value="${agent.thinking_budget??''}" placeholder="None">
-              </div>
-              <div class="form-group">
-                <label>Max Concurrent Instances</label>
-                <input type="number" id="edit-max-instances-${agent.id}" min="1" value="${agent.max_instances ?? ''}" placeholder="Unlimited">
-              </div>
-            </div>
-            <!-- Full: Capabilities -->
-            <div class="form-group">
-              <label style="margin-bottom:6px;">Capabilities</label>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reflection-${agent.id}" ${agent.reflection?'checked':''}> Reflection</label>
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-thinking-tool-${agent.id}" ${agent.enable_thinking_tool?'checked':''}> Thinking Tool</label>
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;"><input type="checkbox" id="edit-reasoning-tool-${agent.id}" ${agent.enable_reasoning_tool?'checked':''}> Reasoning Tool</label>
-              </div>
-            </div>
-            <!-- Full: Context Management -->
-            <div class="form-group">
-              <label style="margin-bottom:6px;">Context Management</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
-                <input type="checkbox" id="edit-context-management-${agent.id}" ${agent.context_management?'checked':''} onchange="document.getElementById('ctx-mgmt-opts-${agent.id}').style.display=this.checked?'':'none'"> Enable context window management
-              </label>
-              <div id="ctx-mgmt-opts-${agent.id}" style="display:${agent.context_management?'':'none'};margin-top:8px;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
-                  <div class="form-group">
-                    <label>Keep Recent Messages</label>
-                    <input type="number" id="edit-context-management-keep-recent-${agent.id}" min="1" value="${agent.context_management_keep_recent??''}" placeholder="Default (5)">
-                  </div>
-                  <div class="form-group">
-                    <label>Compression Model</label>
-                    <select id="edit-context-management-model-${agent.id}">
-                      <option value="" ${!agent.context_management_model?'selected':''}>Same as agent</option>
-                      <option value="claude-haiku-4-5-20251001" ${agent.context_management_model==='claude-haiku-4-5-20251001'?'selected':''}>Haiku</option>
-                      <option value="claude-sonnet-4-6" ${agent.context_management_model==='claude-sonnet-4-6'?'selected':''}>Sonnet</option>
-                    </select>
+              <div class="form-group" style="margin-bottom:8px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                  <input type="checkbox" id="edit-context-management-${agent.id}" ${agent.context_management?'checked':''} onchange="document.getElementById('ctx-mgmt-opts-${agent.id}').style.display=this.checked?'':'none'"> Enable context window management
+                </label>
+                <div id="ctx-mgmt-opts-${agent.id}" style="display:${agent.context_management?'':'none'};margin-top:8px;">
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                    <div class="form-group">
+                      <label>Keep Recent Messages</label>
+                      <input type="number" id="edit-context-management-keep-recent-${agent.id}" min="1" value="${agent.context_management_keep_recent??''}" placeholder="Default (5)">
+                    </div>
+                    <div class="form-group">
+                      <label>Compression Model</label>
+                      <select id="edit-context-management-model-${agent.id}">
+                        <option value="" ${!agent.context_management_model?'selected':''}>Same as agent</option>
+                        <option value="claude-haiku-4-5-20251001" ${agent.context_management_model==='claude-haiku-4-5-20251001'?'selected':''}>Haiku</option>
+                        <option value="claude-sonnet-4-6" ${agent.context_management_model==='claude-sonnet-4-6'?'selected':''}>Sonnet</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <!-- Full: System Prompt -->
-            <div class="form-group">
-              <label>System Prompt</label>
-              <textarea id="edit-prompt-${agent.id}" style="min-height:80px;">${escHtml(agent.system_prompt || '')}</textarea>
-            </div>
-            <div class="btn-row">
-              <button class="btn btn-primary btn-sm" onclick="saveAgentConfig(${agent.id})">Save Config</button>
-            </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                  <input type="checkbox" id="edit-memory-enabled-${agent.id}" ${agent.memory_enabled?'checked':''}> Enable persistent memory across runs
+                </label>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Agent remembers conversation history and summaries between runs. Uses extra tokens for summary generation.</div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Scheduled Runs</legend>
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:normal;margin:0;cursor:pointer;">
+                  <input type="checkbox" id="edit-schedule-enabled-${agent.id}" ${agent.schedule_enabled?'checked':''} onchange="document.getElementById('schedule-opts-${agent.id}').style.display=this.checked?'':'none'"> Enable scheduled runs
+                </label>
+                <div style="font-size:12px;color:var(--muted);margin-top:4px;">Uses the agent's Instructions field as the task prompt.</div>
+                <div id="schedule-opts-${agent.id}" style="display:${agent.schedule_enabled?'':'none'};margin-top:8px;">
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px;">
+                    <div class="form-group">
+                      <label>Interval</label>
+                      <input type="number" id="edit-schedule-interval-${agent.id}" min="1" value="${agent.schedule_interval??''}" placeholder="1">
+                    </div>
+                    <div class="form-group">
+                      <label>Unit</label>
+                      <select id="edit-schedule-unit-${agent.id}">
+                        <option value="mins" ${agent.schedule_unit==='mins'?'selected':''}>mins</option>
+                        <option value="hours" ${(agent.schedule_unit||'hours')==='hours'?'selected':''}>hours</option>
+                        <option value="days" ${agent.schedule_unit==='days'?'selected':''}>days</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" onclick="triggerCheckNow(${agent.id})">▶ Run Now</button>
+                  <span id="check-now-msg-${agent.id}" style="font-size:12px;margin-left:8px;"></span>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>System Prompt</legend>
+              <div class="form-group" style="margin-bottom:0;">
+                <textarea id="edit-prompt-${agent.id}" style="min-height:80px;">${escHtml(agent.system_prompt || '')}</textarea>
+              </div>
+            </fieldset>
           </div>
           <div id="json-editor-${agent.id}" style="display:none;">
             <div class="form-group">
@@ -1120,11 +1372,62 @@ async function renderAgentDetail(agent) {
       </div>
     </div>
   `;
+  // Restore pending (unsaved) config from localStorage
+  const pending = getPendingConfig(agent.id);
+  if (pending) {
+    const setVal = (sel, v) => { const el = document.getElementById(sel); if (el && v != null) el.value = v; };
+    const setChk = (sel, v) => { const el = document.getElementById(sel); if (el) el.checked = !!v; };
+    setVal(`edit-model-${agent.id}`, pending.model);
+    setVal(`edit-prompt-${agent.id}`, pending.system_prompt || '');
+    setVal(`edit-type-${agent.id}`, pending.agent_type);
+    setVal(`edit-max-instances-${agent.id}`, pending.max_instances ?? '');
+    setVal(`edit-role-${agent.id}`, pending.role || '');
+    setVal(`edit-goal-${agent.id}`, pending.goal || '');
+    setVal(`edit-instructions-${agent.id}`, pending.instructions || '');
+    setVal(`edit-education-${agent.id}`, pending.education || '');
+    setVal(`edit-work-experience-${agent.id}`, pending.work_experience || '');
+    setVal(`edit-reasoning-effort-${agent.id}`, pending.reasoning_effort || '');
+    setVal(`edit-tool-call-limit-${agent.id}`, pending.tool_call_limit ?? '');
+    setVal(`edit-thinking-budget-${agent.id}`, pending.thinking_budget ?? '');
+    setChk(`edit-reflection-${agent.id}`, pending.reflection);
+    setChk(`edit-thinking-tool-${agent.id}`, pending.enable_thinking_tool);
+    setChk(`edit-reasoning-tool-${agent.id}`, pending.enable_reasoning_tool);
+    setChk(`edit-context-management-${agent.id}`, pending.context_management);
+    setVal(`edit-context-management-keep-recent-${agent.id}`, pending.context_management_keep_recent ?? '');
+    setVal(`edit-context-management-model-${agent.id}`, pending.context_management_model || '');
+    setChk(`edit-memory-enabled-${agent.id}`, pending.memory_enabled);
+    setChk(`edit-schedule-enabled-${agent.id}`, pending.schedule_enabled);
+    setVal(`edit-schedule-interval-${agent.id}`, pending.schedule_interval ?? '');
+    setVal(`edit-schedule-unit-${agent.id}`, pending.schedule_unit || 'hours');
+    // Restore tool checkboxes
+    if (pending.tools) {
+      document.querySelectorAll(`.edit-tool-cb-${agent.id}`).forEach(cb => {
+        cb.checked = pending.tools.includes(cb.value);
+      });
+    }
+    // Sync visibility of conditional sections
+    const ctxEl = document.getElementById(`ctx-mgmt-opts-${agent.id}`);
+    if (ctxEl) ctxEl.style.display = pending.context_management ? '' : 'none';
+    const schedEl = document.getElementById(`schedule-opts-${agent.id}`);
+    if (schedEl) schedEl.style.display = pending.schedule_enabled ? '' : 'none';
+    highlightChangedFields(agent.id);
+  }
+
   panel.querySelectorAll(`#form-editor-${agent.id} textarea`).forEach(ta => {
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
     ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
   });
+
+  // Attach change listeners to auto-save pending config
+  const formEl = document.getElementById(`form-editor-${agent.id}`);
+  if (formEl) {
+    formEl.querySelectorAll('input, select, textarea').forEach(el => {
+      const evt = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(evt, () => { savePendingConfig(agent.id); highlightChangedFields(agent.id); });
+    });
+  }
+
   loadAgentStats(agent.id);
   loadAgentRuns(agent.id);
 }
@@ -1217,36 +1520,15 @@ async function createAgent() {
 }
 
 async function saveAgentConfig(id) {
-  const model = document.getElementById(`edit-model-${id}`).value;
-  const system_prompt = document.getElementById(`edit-prompt-${id}`).value.trim() || null;
-  const tools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
-  const agent_type = document.getElementById(`edit-type-${id}`).value;
-  const max_instances_raw = document.getElementById(`edit-max-instances-${id}`)?.value.trim();
-  const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
-  const role = document.getElementById(`edit-role-${id}`)?.value.trim() || null;
-  const goal = document.getElementById(`edit-goal-${id}`)?.value.trim() || null;
-  const instructions = document.getElementById(`edit-instructions-${id}`)?.value.trim() || null;
-  const education = document.getElementById(`edit-education-${id}`)?.value.trim() || null;
-  const work_experience = document.getElementById(`edit-work-experience-${id}`)?.value.trim() || null;
-  const reasoning_effort = document.getElementById(`edit-reasoning-effort-${id}`)?.value || null;
-  const tool_call_limit_raw = document.getElementById(`edit-tool-call-limit-${id}`)?.value.trim();
-  const tool_call_limit = tool_call_limit_raw ? parseInt(tool_call_limit_raw) : null;
-  const thinking_budget_raw = document.getElementById(`edit-thinking-budget-${id}`)?.value.trim();
-  const thinking_budget = thinking_budget_raw ? parseInt(thinking_budget_raw) : null;
-  const reflection = document.getElementById(`edit-reflection-${id}`)?.checked ?? false;
-  const enable_thinking_tool = document.getElementById(`edit-thinking-tool-${id}`)?.checked ?? false;
-  const enable_reasoning_tool = document.getElementById(`edit-reasoning-tool-${id}`)?.checked ?? false;
-  const context_management = document.getElementById(`edit-context-management-${id}`)?.checked ?? false;
-  const cmkr_raw = document.getElementById(`edit-context-management-keep-recent-${id}`)?.value.trim();
-  const context_management_keep_recent = cmkr_raw ? parseInt(cmkr_raw) : null;
-  const context_management_model = document.getElementById(`edit-context-management-model-${id}`)?.value || null;
+  const vals = getFormValues(id);
   const msgEl = document.getElementById(`edit-msg-${id}`);
   try {
     await api(`/api/agents/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system_prompt, tools, agent_type, max_instances, role, goal, instructions, education, work_experience, reasoning_effort, tool_call_limit, thinking_budget, reflection, enable_thinking_tool, enable_reasoning_tool, context_management, context_management_keep_recent, context_management_model }),
+      body: JSON.stringify(vals),
     });
+    clearPendingConfig(id);
     msgEl.textContent = 'Saved!';
     msgEl.className = 'success-msg';
     setTimeout(() => { msgEl.textContent = ''; }, 2000);
@@ -1263,40 +1545,10 @@ function toggleJsonEditor(id) {
   const msgEl = document.getElementById(`edit-msg-${id}`);
   if (jsonDiv.style.display === 'none') {
     const agent = agentsData.find(a => a.id === id);
-    const model = document.getElementById(`edit-model-${id}`).value;
-    const system_prompt = document.getElementById(`edit-prompt-${id}`).value.trim() || null;
-    const currentTools = Array.from(document.querySelectorAll(`.edit-tool-cb-${id}:checked`)).map(cb => cb.value);
-    const agentType = document.getElementById(`edit-type-${id}`)?.value;
-    const max_instances_raw = document.getElementById(`edit-max-instances-${id}`)?.value.trim();
-    const max_instances = max_instances_raw ? parseInt(max_instances_raw) : null;
-    const role = document.getElementById(`edit-role-${id}`)?.value.trim() || null;
-    const goal = document.getElementById(`edit-goal-${id}`)?.value.trim() || null;
-    const instructions = document.getElementById(`edit-instructions-${id}`)?.value.trim() || null;
-    const education = document.getElementById(`edit-education-${id}`)?.value.trim() || null;
-    const work_experience = document.getElementById(`edit-work-experience-${id}`)?.value.trim() || null;
-    const reasoning_effort = document.getElementById(`edit-reasoning-effort-${id}`)?.value || null;
-    const tool_call_limit_raw = document.getElementById(`edit-tool-call-limit-${id}`)?.value.trim();
-    const tool_call_limit = tool_call_limit_raw ? parseInt(tool_call_limit_raw) : null;
-    const thinking_budget_raw = document.getElementById(`edit-thinking-budget-${id}`)?.value.trim();
-    const thinking_budget = thinking_budget_raw ? parseInt(thinking_budget_raw) : null;
-    const reflection = document.getElementById(`edit-reflection-${id}`)?.checked ?? false;
-    const enable_thinking_tool = document.getElementById(`edit-thinking-tool-${id}`)?.checked ?? false;
-    const enable_reasoning_tool = document.getElementById(`edit-reasoning-tool-${id}`)?.checked ?? false;
-    const context_management = document.getElementById(`edit-context-management-${id}`)?.checked ?? false;
-    const cmkr_raw = document.getElementById(`edit-context-management-keep-recent-${id}`)?.value.trim();
-    const context_management_keep_recent = cmkr_raw ? parseInt(cmkr_raw) : null;
-    const context_management_model = document.getElementById(`edit-context-management-model-${id}`)?.value || null;
+    const vals = getFormValues(id);
     document.getElementById(`json-textarea-${id}`).value = JSON.stringify({
       name: agent ? agent.name : undefined,
-      model,
-      system_prompt,
-      tools: currentTools,
-      agent_type: agentType,
-      max_instances,
-      role, goal, instructions, education, work_experience,
-      reasoning_effort, tool_call_limit, thinking_budget,
-      reflection, enable_thinking_tool, enable_reasoning_tool,
-      context_management, context_management_keep_recent, context_management_model,
+      ...vals,
       enabled: agent ? agent.enabled : undefined,
     }, null, 2);
     jsonDiv.style.display = '';
@@ -1368,6 +1620,7 @@ async function deleteAgent(id) {
   try {
     await fetch(`/api/agents/${id}`, { method: 'DELETE' });
     selectedAgentId = null;
+    localStorage.removeItem('selectedAgentId');
     document.getElementById('agent-detail').innerHTML = `
       <div class="detail-panel">
         <div class="detail-header">

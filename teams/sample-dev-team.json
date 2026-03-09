@@ -21,7 +21,10 @@
     "tool_call_limit": 20,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "Assistant",
@@ -45,7 +48,10 @@
     "tool_call_limit": 5,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "Code Reviewer",
@@ -69,7 +75,10 @@
     "tool_call_limit": 40,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "Designer",
@@ -93,7 +102,10 @@
     "tool_call_limit": 5,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "DevOps",
@@ -117,7 +129,10 @@
     "tool_call_limit": 30,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "Developer",
@@ -141,7 +156,10 @@
     "tool_call_limit": 100,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "Project Manager",
@@ -165,7 +183,11 @@
     "tool_call_limit": 60,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "memory_enabled": 1,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   },
   {
     "name": "Tester",
@@ -189,6 +211,9 @@
     "tool_call_limit": 40,
     "context_management": 1,
     "context_management_keep_recent": null,
-    "context_management_model": null
+    "context_management_model": null,
+    "schedule_enabled": false,
+    "schedule_interval": null,
+    "schedule_unit": "hours"
   }
 ]
