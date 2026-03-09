@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import queue
 import subprocess
 import sys
@@ -301,6 +302,23 @@ async def trigger_pm_poll():
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _run_pm_poll)
     return {"ok": True, "message": "PM check triggered"}
+
+
+@app.post("/api/server/restart")
+async def restart_server():
+    """Restart the dashboard server process using os.execv.
+
+    Schedules the restart after a short delay so that this HTTP response
+    can be fully sent back to the client before the process is replaced.
+    All running agents will be stopped because the process is replaced.
+    """
+    async def _do_restart():
+        # Brief delay to allow the HTTP response to be delivered first.
+        await asyncio.sleep(0.5)
+        os.execv(sys.executable, [sys.executable, "-m", "dashboard.run"])
+
+    asyncio.create_task(_do_restart())
+    return {"ok": True, "message": "Server is restarting\u2026"}
 
 
 @app.get("/api/settings")
