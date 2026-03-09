@@ -646,12 +646,19 @@ def agent_stats(agent_id: int):
 
 
 def _find_bun() -> str:
-    """Locate the bun binary on the system PATH."""
+    """Locate the bun binary on PATH or common install locations."""
     import shutil
     path = shutil.which("bun")
-    if not path:
-        raise FileNotFoundError("bun not found on PATH. Install it: https://bun.sh")
-    return path
+    if path:
+        return path
+    for candidate in [
+        str(Path.home() / ".bun" / "bin" / "bun"),
+        "/usr/local/bin/bun",
+        "/opt/homebrew/bin/bun",
+    ]:
+        if Path(candidate).is_file():
+            return candidate
+    raise FileNotFoundError("bun not found. Install it: https://bun.sh")
 
 
 def _build_tools(agent_cfg: dict) -> list:
