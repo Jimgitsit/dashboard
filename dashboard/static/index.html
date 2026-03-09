@@ -640,7 +640,8 @@ function fmtTime(ts) {
   return d.toLocaleString();
 }
 function statusBadge(s) {
-  const cls = s === 'success' ? 'badge-success' : s === 'error' ? 'badge-error' : s === 'running' ? 'badge-running' : s === 'cancelled' ? 'badge-cancelled' : 'badge-unknown';
+  const sl = (s || '').toLowerCase();
+  const cls = (sl === 'success' || sl === 'completed') ? 'badge-success' : (sl === 'error' || sl === 'failed') ? 'badge-error' : sl === 'running' ? 'badge-running' : sl === 'cancelled' ? 'badge-cancelled' : 'badge-unknown';
   return `<span class="badge ${cls}">${s || 'unknown'}</span>`;
 }
 
