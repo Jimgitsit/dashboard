@@ -51,11 +51,15 @@ The last dashboard you'll ever need. A web dashboard for managing and orchestrat
 ### Install
 
 ```bash
+# Install Bun (required for Trello MCP tool; skip if not using Trello)
+curl -fsSL https://bun.sh/install | bash
+
+# Clone and set up the project
 git clone https://github.com/Jimgitsit/dashboard.git
 cd dashboard
 python -m venv .venv
 source .venv/bin/activate
-pip install upsonic fastapi uvicorn python-dotenv
+pip install -r requirements.txt
 ```
 
 ### Model Support

@@ -1,0 +1,9 @@
+upsonic
+fastapi
+uvicorn
+python-dotenv
+
+# Model providers — install at least one
+anthropic
+openai
+# google-generativeai
