@@ -22,13 +22,15 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   },
   {
     "name": "Assistant",
-    "model": "claude-haiku-4-5-20251001",
+    "model": "claude-sonnet-4-6",
     "system_prompt": null,
     "tools": "[\"WebSearchTool\", \"CodeExecutionTool\", \"GitHub\", \"Trello\"]",
     "agent_type": "standard",
@@ -49,9 +51,11 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 1,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   },
   {
     "name": "Code Reviewer",
@@ -76,9 +80,11 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   },
   {
     "name": "Designer",
@@ -103,9 +109,11 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   },
   {
     "name": "DevOps",
@@ -130,9 +138,11 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   },
   {
     "name": "Developer",
@@ -157,37 +167,40 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   },
   {
     "name": "Project Manager",
-    "model": "claude-sonnet-4-6",
+    "model": "claude-haiku-4-5-20251001",
     "system_prompt": null,
-    "tools": "[\"WebSearchTool\", \"CodeExecutionTool\", \"GitHub\", \"Trello\", \"SpawnAgents\"]",
+    "tools": "[\"Trello\", \"SpawnAgents\"]",
     "agent_type": "standard",
     "workspace": null,
     "max_instances": 1,
     "enabled": 1,
     "role": "Software development project coordinator",
     "goal": "Ensure all projects move smoothly from design to delivery by coordinating agents and tracking progress via Trello.",
-    "instructions": "You coordinate a software development team. Act autonomously — never ask permission, never announce intent. Report only actions already taken, in past tense.\n\n## New Project Mode\nGiven a design document:\n1. Create a Trello board named after the project.\n2. Create a \"Design Document\" card with the full doc in the description. Add a \"Design Doc\" label.\n3. Spawn Architect with board ID, card ID, and design doc for review.\n4. Spawn DevOps with project name and board ID to create the GitHub repo.\n5. Create lists: Backlog, To Do, In Progress, In Review, Done.\n\n## Polling Mode\nInspect every card on every project board. Act on each based on its state:\n\n- **Design doc with human green-light**: Break into task cards with descriptions and acceptance criteria. Add to Backlog.\n- **@PM comment**: Treat as an instruction. Act immediately (e.g. spawn Developer for \"ready for dev\").\n- **Backlog/To Do, unassigned**: Spawn Developer (or Architect first if architecturally complex).\n- **In Review with PR link**: Spawn Code Reviewer.\n- **Code Reviewer approved**: Spawn Tester.\n- **Technical question**: Spawn Architect.\n- **Blocked on human**: Comment with what decision is needed. Act on any human response.\n- **Done**: Call cleanup_workspace with the card URL.\n\nDo not spawn an agent for a card with a pending action. Summarize all boards checked and actions taken.",
+    "instructions": "You coordinate a software development team. Act autonomously — never ask permission, never announce intent. Report only actions already taken, in past tense.\n\n## New Project Mode\nGiven a design document:\n1. Create a Trello board named after the project.\n2. Create a \"Design Document\" card with the full doc in the description. Add a \"Design Doc\" label.\n3. Spawn Architect with board ID, card ID, and design doc for review.\n4. Spawn DevOps with project name and board ID to create the GitHub repo.\n5. Create lists: Backlog, To Do, In Progress, In Review, Done.\n\n## Polling Mode\n\n### Step 1: Get boards and recent activity\n1. If a Trello workspace ID is provided in your system prompt, call `list_boards_in_workspace` with that ID. Otherwise, call `list_boards` (no params).\n2. For each board, call `get_recent_activity` with `{\"boardId\": \"<id>\", \"limit\": 25}`.\n3. If a board has no recent activity, skip it entirely. Do NOT call get_lists, get_cards_by_list_id, or get_card for boards with no activity.\n\n### Step 2: Act on changed cards only\nFor cards that appear in recent activity, read with `get_card` only if the activity type suggests action is needed. Apply these rules:\n\n- **Design doc with NEW human comment containing approval (e.g. \"LGTM\", \"approved\", \"go ahead\")**: Break into task cards. Add to Backlog.\n- **@PM comment (new)**: Treat as an instruction. Act immediately.\n- **Card moved to Backlog, unassigned**: Spawn Developer (or Architect first if architecturally complex).\n- **Card moved to In Review with PR link**: Spawn Code Reviewer.\n- **Code Reviewer approved**: Spawn Tester.\n- **New technical question with no Architect response**: Spawn Architect.\n- **Card moved to Done**: Call cleanup_workspace with the card URL.\n\n### Efficiency rules — CRITICAL\n- Use ONLY `list_boards_in_workspace` (or `list_boards`) → `get_recent_activity(boardId)` → `get_card(cardId)` as needed.\n- NEVER call `get_lists`, `get_cards_by_list_id`, or enumerate all cards.\n- NEVER call `get_card` unless activity indicates the card needs action.\n- NEVER browse GitHub, read file contents, or inspect repositories.\n- NEVER spawn agents for cards that already have a pending action or recent agent comment.\n- If no boards have recent activity, report \"No new activity\" and STOP. Do not make any more tool calls.\n\nSummarize: boards checked, activity found, actions taken.",
     "education": null,
     "work_experience": null,
-    "reflection": 1,
-    "enable_thinking_tool": 1,
+    "reflection": 0,
+    "enable_thinking_tool": 0,
     "enable_reasoning_tool": 0,
     "reasoning_effort": null,
     "thinking_budget": null,
-    "tool_call_limit": 60,
+    "tool_call_limit": 20,
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "memory_enabled": 1,
-    "schedule_enabled": false,
-    "schedule_interval": null,
-    "schedule_unit": "hours"
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
+    "schedule_interval": 15,
+    "schedule_unit": "mins",
+    "schedule_last_run": "2026-03-09T04:26:55.822558+00:00"
   },
   {
     "name": "Tester",
@@ -212,8 +225,10 @@
     "context_management": 1,
     "context_management_keep_recent": null,
     "context_management_model": null,
-    "schedule_enabled": false,
+    "memory_enabled": 0,
+    "schedule_enabled": 0,
     "schedule_interval": null,
-    "schedule_unit": "hours"
+    "schedule_unit": "mins",
+    "schedule_last_run": null
   }
 ]
