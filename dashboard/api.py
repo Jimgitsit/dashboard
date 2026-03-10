@@ -153,7 +153,7 @@ async def _schedule_watcher_loop():
                 with get_conn() as conn2:
                     conn2.execute("UPDATE agents SET schedule_last_run = ? WHERE id = ?", (now, agent_id))
                 loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, _run_scheduled_agent, agent_id)
+                loop.run_in_executor(None, _run_scheduled_agent, agent_id, last_run)
 
         except Exception:
             logger.exception("Schedule watcher error")
@@ -161,7 +161,7 @@ async def _schedule_watcher_loop():
         await asyncio.sleep(30)
 
 
-def _run_scheduled_agent(agent_id: int):
+def _run_scheduled_agent(agent_id: int, prev_last_run: str | None = None):
     """Synchronously run a scheduled agent using its instructions as the task."""
     import time
     with get_conn() as conn:
@@ -177,6 +177,13 @@ def _run_scheduled_agent(agent_id: int):
 
     cfg = dict(row)
     task_text = cfg.get("instructions") or "Perform your scheduled task."
+    if prev_last_run:
+        task_text = (
+            f"IMPORTANT: This is a scheduled poll. Only look at activity since {prev_last_run}. "
+            f"When calling get_recent_activity, you MUST include the \"since\" parameter: "
+            f"{{\"boardId\": \"<id>\", \"limit\": 25, \"since\": \"{prev_last_run}\"}}\n\n"
+            + task_text
+        )
 
     # Check concurrency limit (atomic check-and-increment)
     max_inst = cfg.get("max_instances") or 1
@@ -352,11 +359,12 @@ async def trigger_check_now(agent_id: int):
     if not row["enabled"]:
         raise HTTPException(status_code=400, detail="Agent is disabled")
     # Reset the schedule timer so the next scheduled run counts from now
+    prev_last_run = row["schedule_last_run"]
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute("UPDATE agents SET schedule_last_run = ? WHERE id = ?", (now, agent_id))
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run_scheduled_agent, agent_id)
+    loop.run_in_executor(None, _run_scheduled_agent, agent_id, prev_last_run)
     return {"ok": True, "message": f"Scheduled run triggered for '{row['name']}'"}
 
 
@@ -684,8 +692,13 @@ def _build_tools(agent_cfg: dict) -> list:
         if "Jira" in tool_names and jira_token and jira_url:
             tools.append(MCPServerTool(id="jira", url=jira_url, authorization_token=jira_token))
         if "Trello" in tool_names and trello_key and trello_token:
+            _trello_mcp_build = Path(__file__).resolve().parent.parent / "vendor" / "mcp-server-trello" / "index.js"
+            if _trello_mcp_build.exists():
+                _trello_cmd = f"node {_trello_mcp_build}"
+            else:
+                _trello_cmd = f"{_find_bun()} x @delorenj/mcp-server-trello"
             tools.append(MCPHandler(
-                command=f"{_find_bun()} x @delorenj/mcp-server-trello",
+                command=_trello_cmd,
                 env={"TRELLO_API_KEY": trello_key, "TRELLO_TOKEN": trello_token},
                 transport="stdio",
             ))
