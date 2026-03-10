@@ -808,7 +808,7 @@ function renderRunsTable(rows) {
           : (r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="padding:1px 6px;font-size:11px;" onclick="rerunFromRunId(${r.id})" title="Re-run">↻</button>` : '')}
       </td>
     </tr>
-    <tr class="run-expand-row"><td colspan="8"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
+    <tr class="run-expand-row"><td colspan="9"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
   `}).join('');
   openIds.forEach(id => {
     const inner = document.getElementById(id);
