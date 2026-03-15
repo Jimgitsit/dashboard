@@ -483,6 +483,10 @@
         <label>Personal Access Token</label>
         <input type="text" id="setting-github-token" placeholder="ghp_…">
       </div>
+      <div class="form-group">
+        <label>Repository <span style="font-weight:400;color:var(--text-muted)">(owner/name — cloned into agent workspaces)</span></label>
+        <input type="text" id="setting-github-repo" placeholder="owner/repo">
+      </div>
     </div>
     <div class="table-card" style="padding:20px;margin-bottom:16px;">
       <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">Jira</h3>
@@ -569,6 +573,7 @@ async function loadSettings() {
     document.getElementById('setting-google-key').value = s.google_api_key ? '••••••••' : '';
     document.getElementById('setting-github-url').value = s.github_mcp_url || '';
     document.getElementById('setting-github-token').value = s.github_token ? '••••••••' : '';
+    document.getElementById('setting-github-repo').value = s.github_repo || '';
     document.getElementById('setting-jira-url').value = s.jira_mcp_url || '';
     document.getElementById('setting-jira-token').value = s.jira_token ? '••••••••' : '';
     document.getElementById('setting-trello-key').value = s.trello_api_key || '';
@@ -591,6 +596,8 @@ async function saveSettings() {
   const ghToken = document.getElementById('setting-github-token').value.trim();
   if (ghUrl) data.github_mcp_url = ghUrl;
   if (ghToken && ghToken !== '••••••••') data.github_token = ghToken;
+  const ghRepo = document.getElementById('setting-github-repo').value.trim();
+  data.github_repo = ghRepo;
   const jiraUrl = document.getElementById('setting-jira-url').value.trim();
   const jiraToken = document.getElementById('setting-jira-token').value.trim();
   if (jiraUrl) data.jira_mcp_url = jiraUrl;
