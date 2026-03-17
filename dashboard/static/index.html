@@ -300,11 +300,11 @@
       <table>
         <thead>
           <tr>
-            <th>Time</th><th>Agent</th><th>Model</th><th>Task</th>
+            <th>#</th><th>Time</th><th>Agent</th><th>Model</th><th>Task</th>
             <th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
           </tr>
         </thead>
-        <tbody id="runs-tbody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+        <tbody id="runs-tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -328,9 +328,9 @@
           <div class="form-group">
             <label>Model</label>
             <select id="new-agent-model">
-              <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
-              <option value="claude-opus-4-6">claude-opus-4-6</option>
-              <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+              <option value="claude-opus-4-6">Claude Opus 4.6</option>
+              <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
             </select>
           </div>
           <div class="form-group">
@@ -483,6 +483,10 @@
         <label>Personal Access Token</label>
         <input type="text" id="setting-github-token" placeholder="ghp_…">
       </div>
+      <div class="form-group">
+        <label>Repository <span style="font-weight:400;color:var(--text-muted)">(owner/name — cloned into agent workspaces)</span></label>
+        <input type="text" id="setting-github-repo" placeholder="owner/repo">
+      </div>
     </div>
     <div class="table-card" style="padding:20px;margin-bottom:16px;">
       <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;text-transform:none;letter-spacing:0;">Jira</h3>
@@ -569,6 +573,7 @@ async function loadSettings() {
     document.getElementById('setting-google-key').value = s.google_api_key ? '••••••••' : '';
     document.getElementById('setting-github-url').value = s.github_mcp_url || '';
     document.getElementById('setting-github-token').value = s.github_token ? '••••••••' : '';
+    document.getElementById('setting-github-repo').value = s.github_repo || '';
     document.getElementById('setting-jira-url').value = s.jira_mcp_url || '';
     document.getElementById('setting-jira-token').value = s.jira_token ? '••••••••' : '';
     document.getElementById('setting-trello-key').value = s.trello_api_key || '';
@@ -591,6 +596,8 @@ async function saveSettings() {
   const ghToken = document.getElementById('setting-github-token').value.trim();
   if (ghUrl) data.github_mcp_url = ghUrl;
   if (ghToken && ghToken !== '••••••••') data.github_token = ghToken;
+  const ghRepo = document.getElementById('setting-github-repo').value.trim();
+  data.github_repo = ghRepo;
   const jiraUrl = document.getElementById('setting-jira-url').value.trim();
   const jiraToken = document.getElementById('setting-jira-token').value.trim();
   if (jiraUrl) data.jira_mcp_url = jiraUrl;
@@ -671,7 +678,7 @@ async function refreshMetrics() {
     renderKPIs(summary);
     renderTrendChart(daily);
     renderAgentChart(perf);
-    renderRunsTable(runs.rows);
+    renderRunsTable(runs.rows, runs.total);
     document.getElementById('last-refresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
     _nextRefreshIn = 30;
   } catch(e) {
@@ -777,19 +784,21 @@ function renderAgentChart(rows) {
   });
 }
 
-function renderRunsTable(rows) {
+function renderRunsTable(rows, total) {
   const tbody = document.getElementById('runs-tbody');
   const openIds = new Set([...tbody.querySelectorAll('.run-expand-inner.open')].map(el => el.id));
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map((r, i) => {
     if (r.agent_id && r.task_description) _runTaskMap.set(r.id, { agentId: r.agent_id, task: r.task_description, fromTable: true });
     const expandId = `rex-m-${r.id ?? i}`;
     const output = r.output_text || '_No output recorded._';
+    const runNum = total != null ? total - i : '';
     return `
     <tr class="run-row" onclick="toggleRunRow(this, '${expandId}')">
+      <td class="mono" style="white-space:nowrap;font-size:11px;">${runNum}</td>
       <td class="mono" style="white-space:nowrap;font-size:11px;"><span class="run-chevron">▶</span>${fmtTime(r.recorded_at)}</td>
       <td>${r.agent_name || '–'}</td>
       <td class="mono" style="font-size:11px;">${r.model_name || '–'}</td>
@@ -808,7 +817,7 @@ function renderRunsTable(rows) {
           : (r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="padding:1px 6px;font-size:11px;" onclick="rerunFromRunId(${r.id})" title="Re-run">↻</button>` : '')}
       </td>
     </tr>
-    <tr class="run-expand-row"><td colspan="9"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
+    <tr class="run-expand-row"><td colspan="10"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
   `}).join('');
   openIds.forEach(id => {
     const inner = document.getElementById(id);
@@ -872,6 +881,12 @@ setInterval(tickRunningElapsed, 1000);
 function tickScheduleCountdowns() {
   const now = Date.now();
   document.querySelectorAll('.schedule-countdown').forEach(el => {
+    if (el.dataset.enabled === '0') {
+      el.textContent = 'schedule paused';
+      el.style.color = 'var(--muted)';
+      return;
+    }
+    el.style.color = 'var(--accent)';
     const last = el.dataset.last;
     const interval = parseInt(el.dataset.interval) || 0;
     const unit = el.dataset.unit || 'hours';
@@ -920,6 +935,14 @@ setInterval(() => {
   if (el) el.textContent = `Next refresh in ${_nextRefreshIn}s`;
 }, 1000);
 
+function friendlyModelName(model) {
+  const map = {
+    'claude-opus-4-6': 'Claude Opus 4.6',
+    'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+    'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
+  };
+  return map[model] || model;
+}
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1137,12 +1160,11 @@ function renderAgentList() {
           <span class="slider"></span>
         </label>
       </div>
-      <div class="agent-model">${escHtml(a.model)}${a.agent_type && a.agent_type !== 'standard' ? ` <span class="badge badge-${a.agent_type}">${a.agent_type}</span>` : ''}</div>
+      <div class="agent-model">${escHtml(friendlyModelName(a.model))}${a.agent_type && a.agent_type !== 'standard' ? ` <span class="badge badge-${a.agent_type}">${a.agent_type}</span>` : ''}</div>
       <div class="agent-meta">
-        <span>${a.run_count || 0} runs</span>
         <span>${a.last_run ? 'last: ' + fmtTime(a.last_run) : 'never run'}</span>
       </div>
-      ${a.schedule_enabled ? `<div class="agent-meta" style="margin-top:4px;"><span class="schedule-countdown" data-last="${a.schedule_last_run||''}" data-interval="${a.schedule_interval||0}" data-unit="${a.schedule_unit||'mins'}" style="color:var(--accent);font-size:11px;"></span></div>` : ''}
+      ${a.schedule_enabled ? `<div class="agent-meta" style="margin-top:4px;"><span class="schedule-countdown" data-last="${a.schedule_last_run||''}" data-interval="${a.schedule_interval||0}" data-unit="${a.schedule_unit||'mins'}" data-enabled="${a.enabled ? 1 : 0}" style="font-size:11px;"></span></div>` : ''}
       ${hasPendingChanges(a.id) ? `<div class="agent-meta" style="margin-top:4px;"><span style="color:var(--warning);font-size:11px;">unsaved changes</span></div>` : ''}
     </div>
   `).join('');
@@ -1190,9 +1212,9 @@ async function renderAgentDetail(agent) {
                 <div class="form-group">
                   <label>Model</label>
                   <select id="edit-model-${agent.id}">
-                    <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>claude-sonnet-4-6</option>
-                    <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>claude-opus-4-6</option>
-                    <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>claude-haiku-4-5-20251001</option>
+                    <option value="claude-sonnet-4-6" ${agent.model==='claude-sonnet-4-6'?'selected':''}>Claude Sonnet 4.6</option>
+                    <option value="claude-opus-4-6" ${agent.model==='claude-opus-4-6'?'selected':''}>Claude Opus 4.6</option>
+                    <option value="claude-haiku-4-5-20251001" ${agent.model==='claude-haiku-4-5-20251001'?'selected':''}>Claude Haiku 4.5</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -1466,15 +1488,17 @@ async function loadAgentRuns(id) {
       <div style="overflow-x:auto;">
         <table>
           <thead><tr>
-            <th>Time</th><th>Task</th><th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
+            <th>#</th><th>Time</th><th>Task</th><th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
           </tr></thead>
           <tbody>
             ${data.rows.map((r, i) => {
               if (r.task_description) _runTaskMap.set(r.id, { agentId: id, task: r.task_description, fromTable: false });
               const expandId = `rex-a-${r.id ?? i}`;
               const output = r.output_text || '_No output recorded._';
+              const runNum = data.total - i;
               return `
               <tr class="run-row" onclick="toggleRunRow(this, '${expandId}')">
+                <td class="mono" style="font-size:11px;white-space:nowrap;">${runNum}</td>
                 <td class="mono" style="font-size:11px;white-space:nowrap;"><span class="run-chevron">▶</span>${fmtTime(r.recorded_at)}</td>
                 <td><div class="truncate" title="${escHtml(r.task_description||'')}">${escHtml(r.task_description||'–')}</div></td>
                 <td>${statusBadge(r.status)}</td>
@@ -1483,7 +1507,7 @@ async function loadAgentRuns(id) {
                 <td>${fmtDur(r.duration_s)}</td>
                 <td onclick="event.stopPropagation()">${r.task_description ? `<button class="btn btn-ghost btn-sm" onclick="rerunFromRunId(${r.id})" title="Re-run this task">↻</button>` : ''}</td>
               </tr>
-              <tr class="run-expand-row"><td colspan="7"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
+              <tr class="run-expand-row"><td colspan="8"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
             `}).join('')}
           </tbody>
         </table>
@@ -2014,24 +2038,44 @@ async function importAgents(input) {
     const text = await file.text();
     const agents = JSON.parse(text);
     if (!Array.isArray(agents)) throw new Error('File must contain a JSON array of agents');
-    let created = 0, skipped = 0;
+    let created = 0, updated = 0;
+    // Fetch existing agents so we can find IDs by name for overrides
+    const existing = await api('/api/agents');
+    const existingByName = {};
+    for (const a of existing) existingByName[a.name] = a.id;
     for (const agent of agents) {
       // tools is stored as a JSON string in the DB/export but the API expects an array
       if (typeof agent.tools === 'string') try { agent.tools = JSON.parse(agent.tools); } catch(e) {}
-      try {
+      const existingId = existingByName[agent.name];
+      if (existingId) {
+        // Override existing agent
+        const payload = { ...agent };
+        delete payload.id;
+        delete payload.created_at;
+        delete payload.updated_at;
+        delete payload.run_count;
+        delete payload.last_run;
+        delete payload.schedule_last_run;
+        await api(`/api/agents/${existingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        updated++;
+      } else {
         await api('/api/agents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(agent),
         });
         created++;
-      } catch(e) {
-        if (e.message && e.message.includes('409')) skipped++;
-        else throw e;
       }
     }
     await loadAgents();
-    alert(`Imported ${created} agent(s)` + (skipped ? `, ${skipped} skipped (already exist)` : ''));
+    const parts = [];
+    if (created) parts.push(`${created} created`);
+    if (updated) parts.push(`${updated} updated`);
+    alert(`Imported: ${parts.join(', ')}`);
   } catch(e) {
     alert('Import failed: ' + e.message);
   }

@@ -9,7 +9,7 @@ import sys
 import threading
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -193,15 +193,21 @@ def _run_scheduled_agent(agent_id: int, prev_last_run: str | None = None):
             return
         _running_counts[agent_id] = _running_counts.get(agent_id, 0) + 1
 
+    workspace_path = None
+    if cfg.get("agent_type") == "autonomous":
+        workspace_path = _setup_workspace()
+        cfg["workspace"] = workspace_path
+
     temp_run_id = str(uuid.uuid4())
     wall_start = time.monotonic()
     with get_conn() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status) VALUES (?, ?, ?, ?, ?)",
-            (temp_run_id, datetime.now(timezone.utc).isoformat(), cfg["name"], task_text, "RUNNING"),
+            "INSERT OR IGNORE INTO runs (run_id, recorded_at, agent_name, task_description, status, workspace) VALUES (?, ?, ?, ?, ?, ?)",
+            (temp_run_id, datetime.now(timezone.utc).isoformat(), cfg["name"], task_text, "RUNNING", workspace_path),
         )
 
     succeeded = False
+    error_msg = None
     try:
         tools = _build_tools(cfg)
         tool_names = json.loads(cfg.get("tools") or "[]")
@@ -220,9 +226,13 @@ def _run_scheduled_agent(agent_id: int, prev_last_run: str | None = None):
             with get_conn() as conn:
                 conn.execute("UPDATE runs SET duration_s = ? WHERE run_id = ?", (wall_duration, real_run_id))
         succeeded = True
-    except Exception:
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
         logger.exception("Schedule watcher: error during scheduled run for agent %d", agent_id)
     finally:
+        if workspace_path:
+            import shutil as _shutil
+            _shutil.rmtree(workspace_path, ignore_errors=True)
         with _running_lock:
             _running_tasks.pop(agent_id, None)
             _running_counts[agent_id] = max(0, _running_counts.get(agent_id, 1) - 1)
@@ -232,7 +242,10 @@ def _run_scheduled_agent(agent_id: int, prev_last_run: str | None = None):
             if succeeded:
                 conn.execute("DELETE FROM runs WHERE run_id = ?", (temp_run_id,))
             else:
-                conn.execute("UPDATE runs SET status = 'FAILED' WHERE run_id = ?", (temp_run_id,))
+                conn.execute(
+                    "UPDATE runs SET status = 'FAILED', output_text = ? WHERE run_id = ?",
+                    (error_msg, temp_run_id),
+                )
 
     logger.info("Schedule watcher: run complete for '%s'", cfg["name"])
 
@@ -544,6 +557,20 @@ def update_agent(agent_id: int, body: AgentUpdate):
         fields["system_prompt"] = body.system_prompt
     if body.enabled is not None:
         fields["enabled"] = body.enabled
+        # When re-enabling a scheduled agent, shift schedule_last_run forward
+        # by the time spent disabled so the countdown resumes where it left off.
+        if body.enabled:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT enabled, schedule_enabled, schedule_last_run, updated_at FROM agents WHERE id = ?",
+                    (agent_id,),
+                ).fetchone()
+            if row and not row["enabled"] and row["schedule_enabled"] and row["schedule_last_run"] and row["updated_at"]:
+                disabled_at = datetime.fromisoformat(row["updated_at"])
+                now = datetime.now(timezone.utc)
+                paused_seconds = (now - disabled_at).total_seconds()
+                last_run = datetime.fromisoformat(row["schedule_last_run"])
+                fields["schedule_last_run"] = (last_run + timedelta(seconds=paused_seconds)).isoformat()
     if body.tools is not None:
         fields["tools"] = json.dumps(body.tools)
     if body.agent_type is not None:
@@ -675,7 +702,7 @@ def _build_tools(agent_cfg: dict) -> list:
     tools = [TOOL_MAP[t] for t in tool_names if t in TOOL_MAP]
     if "GitHub" in tool_names or "Jira" in tool_names or "Trello" in tool_names:
         from upsonic.tools import MCPHandler  # type: ignore
-        from upsonic.tools.builtin_tools import MCPServerTool  # type: ignore
+        from upsonic.tools.mcp import StreamableHTTPClientParams  # type: ignore
         with get_conn() as conn:
             def _s(k):
                 r = conn.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone()
@@ -688,9 +715,9 @@ def _build_tools(agent_cfg: dict) -> list:
             trello_token = _s("trello_token")
             trello_workspace = _s("trello_workspace")
         if "GitHub" in tool_names and gh_token and gh_url:
-            tools.append(MCPServerTool(id="github", url=gh_url, authorization_token=gh_token))
+            tools.append(MCPHandler(url=gh_url, transport="streamable-http", timeout_seconds=60, server_params=StreamableHTTPClientParams(url=gh_url, headers={"Authorization": f"Bearer {gh_token}"})))
         if "Jira" in tool_names and jira_token and jira_url:
-            tools.append(MCPServerTool(id="jira", url=jira_url, authorization_token=jira_token))
+            tools.append(MCPHandler(url=jira_url, transport="streamable-http", timeout_seconds=60, server_params=StreamableHTTPClientParams(url=jira_url, headers={"Authorization": f"Bearer {jira_token}"})))
         if "Trello" in tool_names and trello_key and trello_token:
             _trello_mcp_build = Path(__file__).resolve().parent.parent / "vendor" / "mcp-server-trello" / "index.js"
             if _trello_mcp_build.exists():
@@ -834,17 +861,41 @@ def _workspace_key(task: str) -> str | None:
     return None
 
 
-def _make_workspace(task: str = "") -> str:
-    """Return the workspace path for this task, creating it if needed.
+def _setup_workspace() -> str:
+    """Create a fresh workspace directory for an agent run.
 
-    Tasks with a Trello card ID get a stable workspace directory that persists
-    across re-invocations so agents can resume where they left off.
-    All other tasks get a fresh unique workspace each time.
+    If github_token and github_repo are configured in settings, clones the
+    repository so the agent can work with local files. Always creates a unique
+    directory — cleaned up automatically after the run completes.
     """
+    import subprocess
     _WORKSPACES_ROOT.mkdir(exist_ok=True)
-    key = _workspace_key(task)
-    ws = _WORKSPACES_ROOT / key if key else _WORKSPACES_ROOT / uuid.uuid4().hex[:12]
-    ws.mkdir(exist_ok=True)
+    ws = _WORKSPACES_ROOT / uuid.uuid4().hex[:12]
+    ws.mkdir()
+    with get_conn() as conn:
+        def _s(k):
+            r = conn.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone()
+            return r["value"] if r else None
+        github_token = _s("github_token")
+        github_repo = _s("github_repo")
+    if github_token and github_repo:
+        try:
+            clone_url = f"https://{github_token}@github.com/{github_repo}.git"
+            subprocess.run(
+                ["git", "clone", clone_url, "."],
+                cwd=str(ws), check=True, capture_output=True, timeout=120,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "dev@dashboard.local"],
+                cwd=str(ws), check=True, capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Dashboard Developer"],
+                cwd=str(ws), check=True, capture_output=True,
+            )
+            logger.info("Workspace %s: cloned %s", ws.name, github_repo)
+        except Exception:
+            logger.exception("Failed to clone '%s' into workspace %s", github_repo, ws.name)
     return str(ws)
 
 
@@ -880,10 +931,10 @@ class SpawnAgentsTool:
             if _running_counts.get(agent_id_spawned, 0) >= max_inst:
                 return f"Agent '{agent_name}' is at its concurrency limit ({max_inst}). It will pick up further work on the next polling cycle."
 
-        # Give autonomous agents a stable per-task workspace.
+        # Give autonomous agents a fresh workspace (with repo cloned if configured).
         workspace_path = None
         if cfg.get("agent_type") == "autonomous":
-            workspace_path = _make_workspace(task)
+            workspace_path = _setup_workspace()
             cfg["workspace"] = workspace_path
 
         tools = _build_tools(cfg)
@@ -915,6 +966,9 @@ class SpawnAgentsTool:
                 error_tb = traceback.format_exc()
                 logger.error("Spawned agent '%s' raised an exception:\n%s", agent_name, error_tb)
             finally:
+                if workspace_path:
+                    import shutil as _shutil
+                    _shutil.rmtree(workspace_path, ignore_errors=True)
                 with _running_lock:
                     _running_tasks.pop(agent_id_spawned, None)
                     _running_counts[agent_id_spawned] = max(0, _running_counts.get(agent_id_spawned, 1) - 1)
@@ -970,7 +1024,7 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
         # Resolve workspace before inserting the RUNNING row so we can record it.
         workspace_path = None
         if agent_cfg.get("agent_type") == "autonomous":
-            workspace_path = _make_workspace(body.task)
+            workspace_path = _setup_workspace()
 
         # Insert RUNNING row immediately so it shows in the task list
         with get_conn() as conn:
@@ -1038,6 +1092,9 @@ async def run_agent_task(agent_id: int, body: RunTaskRequest):
                 result_holder["traceback"] = traceback.format_exc()
             finally:
                 _threaded_stdout.unregister()
+                if workspace_path:
+                    import shutil as _shutil
+                    _shutil.rmtree(workspace_path, ignore_errors=True)
                 with _running_lock:
                     _running_tasks.pop(agent_id, None)
                     _running_counts[agent_id] = max(0, _running_counts.get(agent_id, 1) - 1)
