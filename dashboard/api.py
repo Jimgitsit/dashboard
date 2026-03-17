@@ -9,7 +9,7 @@ import sys
 import threading
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -557,6 +557,20 @@ def update_agent(agent_id: int, body: AgentUpdate):
         fields["system_prompt"] = body.system_prompt
     if body.enabled is not None:
         fields["enabled"] = body.enabled
+        # When re-enabling a scheduled agent, shift schedule_last_run forward
+        # by the time spent disabled so the countdown resumes where it left off.
+        if body.enabled:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT enabled, schedule_enabled, schedule_last_run, updated_at FROM agents WHERE id = ?",
+                    (agent_id,),
+                ).fetchone()
+            if row and not row["enabled"] and row["schedule_enabled"] and row["schedule_last_run"] and row["updated_at"]:
+                disabled_at = datetime.fromisoformat(row["updated_at"])
+                now = datetime.now(timezone.utc)
+                paused_seconds = (now - disabled_at).total_seconds()
+                last_run = datetime.fromisoformat(row["schedule_last_run"])
+                fields["schedule_last_run"] = (last_run + timedelta(seconds=paused_seconds)).isoformat()
     if body.tools is not None:
         fields["tools"] = json.dumps(body.tools)
     if body.agent_type is not None:
