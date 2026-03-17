@@ -2,7 +2,18 @@
 
 > **Disclaimer:** This project is highly experimental and in very early development. Expect breaking changes, missing features, and rough edges.
 
-The last dashboard you'll ever need. A web dashboard for managing and orchestrating a team of AI agents built on the [Upsonic](https://upsonic.ai) framework. Designed around a human-in-the-loop workflow where you define agents, kick off tasks, and monitor results — while the agents coordinate among themselves.
+A web dashboard for managing and orchestrating a team of AI agents built on the [Upsonic](https://upsonic.ai) framework. Designed around a human-in-the-loop workflow where you define agents, kick off tasks, and monitor results — while the agents coordinate among themselves.
+
+## Project Updates
+**3/15/26** This project is 99% written by Claude Code! Started as an experiment to see what Opus 4.6 can do, and so far, it's all I've needed. I didn't even pick the language. 
+
+Opus one-shot about 80% of what it is now. Since then I've worked with it 30+ hours to add features and build an end-to-end dev team. 
+
+Some features I've added: autonomous polling, compartmentalized workspaces, Integrations with Github, Jira, and Trello, and a lot of UI fine-tuning and logging.
+
+The biggest roadblock to further development is API cost so context size and cost control has become my primary focus. I've managed to reduce the Project Manager agent from about \$1.50 per poll to about \$0.04. I've gotten successful runs of \[design > PM > Dev > CR > Dev\]. Still need to get Dev costs under control without sacrificing quality.
+
+DevOps is successful at creating a repo and test branch, but needs instructions for environment setup. The Tester agent needs a proper test env to do it's job. Lots to do.
 
 ## Features
 
@@ -166,7 +177,7 @@ If your agents use MCP-based tools, provide the relevant credentials:
 
 1. Click **↑ Import Agents** on the Agents tab.
 2. Select a JSON file containing an array of agent definitions. This can be a single agent or a full team (e.g. `teams/sample-dev-team.json`).
-3. Each agent in the file is created. Agents whose names already exist are skipped.
+3. Each agent in the file is created. Agents whose names already exist are updated with the imported configuration.
 
 ### Configuring an agent
 
@@ -238,7 +249,7 @@ Click **Save Config** when done. You can also edit the full configuration as raw
 
 1. Click **↑ Import Agents** on the Agents tab.
 2. Select a team JSON file (e.g. `teams/sample-dev-team.json`).
-3. All agents in the file are created. Existing agents with the same name are skipped.
+3. All agents in the file are created. Existing agents with the same name are updated with the imported configuration.
 
 ## Project structure
 
