@@ -301,10 +301,10 @@
         <thead>
           <tr>
             <th>#</th><th>Time</th><th>Agent</th><th>Model</th><th>Task</th>
-            <th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th>
+            <th>Status</th><th>Tokens</th><th>Cost</th><th>Duration</th><th></th>
           </tr>
         </thead>
-        <tbody id="runs-tbody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+        <tbody id="runs-tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -788,7 +788,7 @@ function renderRunsTable(rows, total) {
   const tbody = document.getElementById('runs-tbody');
   const openIds = new Set([...tbody.querySelectorAll('.run-expand-inner.open')].map(el => el.id));
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">No runs yet. Run an agent to see data here.</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map((r, i) => {
@@ -806,14 +806,18 @@ function renderRunsTable(rows, total) {
       <td>${statusBadge(r.status)}</td>
       <td>${fmt((r.input_tokens||0)+(r.output_tokens||0))}</td>
       <td>${fmtCost(r.cost_usd)}</td>
-      <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+      <td style="white-space:nowrap;">
         ${r.status === 'RUNNING'
-          ? `<span class="running-elapsed" data-started="${r.recorded_at}">…</span>
-             ${r.agent_id ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;color:var(--error);" onclick="cancelRunFromTable(${r.agent_id}, this)">■</button>` : ''}`
-          : `${fmtDur(r.duration_s)}${r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:1px 6px;font-size:11px;" onclick="rerunFromRunId(${r.id})" title="Re-run">↻</button>` : ''}`}
+          ? `<span class="running-elapsed" data-started="${r.recorded_at}">…</span>`
+          : fmtDur(r.duration_s)}
+      </td>
+      <td onclick="event.stopPropagation()">
+        ${r.status === 'RUNNING'
+          ? (r.agent_id ? `<button class="btn btn-ghost btn-sm" style="padding:1px 6px;font-size:11px;color:var(--danger);" onclick="cancelRunFromTable(${r.agent_id}, this)">■</button>` : '')
+          : (r.agent_id && r.task_description ? `<button class="btn btn-ghost btn-sm" style="padding:1px 6px;font-size:11px;" onclick="rerunFromRunId(${r.id})" title="Re-run">↻</button>` : '')}
       </td>
     </tr>
-    <tr class="run-expand-row"><td colspan="9"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
+    <tr class="run-expand-row"><td colspan="10"><div class="run-expand-inner" id="${expandId}"><div class="run-expand-content">${marked.parse(output)}</div></div></td></tr>
   `}).join('');
   openIds.forEach(id => {
     const inner = document.getElementById(id);
